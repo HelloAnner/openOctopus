@@ -3,403 +3,252 @@
 ## 1. 测试概述
 
 ### 1.1 目标
-- 验证阶段一核心功能的正确性
+- 验证阶段一 MVP 功能的正确性
 - 确保 CLI 命令行为符合预期
-- 验证配置校验逻辑的正确性
+- 验证配置校验和执行逻辑
 - 确保错误处理和退出码正确
+- **验证完整工作流：init -> validate -> run -> status**
 
 ### 1.2 测试范围
 | 功能模块 | 覆盖情况 |
 |---------|---------|
 | openoctopus init | 完整覆盖 |
 | openoctopus validate | 完整覆盖 |
-| openoctopus run | 占位验证 |
+| **openoctopus run** | **实际执行覆盖** |
+| **openoctopus status** | **完整覆盖** |
+| **openoctopus list** | **完整覆盖** |
 | openoctopus version | 完整覆盖 |
 | 配置模型 | 结构验证 |
-| 错误处理 | 场景覆盖 |
+| **Session 管理** | **完整覆盖** |
+| **产物管理** | **完整覆盖** |
 
 ### 1.3 测试工具
 - pytest: 测试框架
-- pytest-asyncio: 异步测试（预留）
 - pytest-cov: 覆盖率
 - typer.testing.CliRunner: CLI 测试
+- unittest.mock: Mock LLM 调用
 
 ---
 
 ## 2. 测试场景
 
-### 场景 1: 项目初始化 - 默认模板
+### 场景 1-12: init 和 validate 测试（保持原有）
 
-**测试目标**: 验证 `openoctopus init` 命令能正确创建项目结构
-
-**前置条件**:
-- 当前目录不存在 `.octopus/` 目录
-- 当前目录不存在 `octopus.yaml` 文件
-
-**测试步骤**:
-```bash
-1. 执行: openoctopus init
-2. 检查退出码: 0
-3. 检查目录结构:
-   - .octopus/ 目录存在
-   - .octopus/sessions/ 目录存在
-   - .octopus/artifacts/ 目录存在
-   - .octopus/logs/ 目录存在
-   - .octopus/cache/ 目录存在
-4. 检查配置文件:
-   - octopus.yaml 存在
-   - YAML 语法正确
-   - 包含必需的字段: version, meta, runtime, llm_profiles, tool_registry, roles, stages, transitions
-```
-
-**期望结果**:
-- 退出码: 0
-- 目录结构完整创建
-- 配置文件可解析
-- 输出包含成功信息: "Initialized OpenOctopus project in ..."
-
-**测试文件**: `tests/e2e/test_init.py::test_init_default_template`
+参见原 e2e.md 场景 1-12。
 
 ---
 
-### 场景 2: 项目初始化 - 指定路径
+### 场景 13: 完整工作流执行 - 单 Stage
 
-**测试目标**: 验证 `--path` 参数能正确指定初始化路径
+**测试目标**: 验证 `openoctopus run` 能正确执行单 stage 工作流
 
 **前置条件**:
-- 目标目录 `/tmp/test_octopus` 不存在或可清空
+- 有效配置和角色定义
+- 需求文件存在
 
 **测试步骤**:
 ```bash
-1. 执行: openoctopus init --path /tmp/test_octopus
-2. 检查退出码: 0
-3. 检查: /tmp/test_octopus/.octopus/ 目录存在
-4. 检查: /tmp/test_octopus/octopus.yaml 存在
-```
-
-**期望结果**:
-- 退出码: 0
-- 项目在指定路径初始化
-
-**测试文件**: `tests/e2e/test_init.py::test_init_with_path`
-
----
-
-### 场景 3: 项目初始化 - 目录已存在（非 force）
-
-**测试目标**: 验证当项目已存在时的错误处理
-
-**前置条件**:
-- 当前目录已存在 `.octopus/` 目录
-
-**测试步骤**:
-```bash
-1. 创建 .octopus/ 目录
-2. 执行: openoctopus init
-3. 检查退出码: 4
-```
-
-**期望结果**:
-- 退出码: 4
-- 输出错误信息: "Project already initialized. Use --force to overwrite."
-- 不修改现有文件
-
-**测试文件**: `tests/e2e/test_init.py::test_init_existing_project`
-
----
-
-### 场景 4: 项目初始化 - force 覆盖
-
-**测试目标**: 验证 `--force` 参数能强制覆盖
-
-**前置条件**:
-- 当前目录已存在 `.octopus/` 目录和 `octopus.yaml`
-
-**测试步骤**:
-```bash
-1. 创建初始项目结构
-2. 修改 octopus.yaml 内容（添加标记）
-3. 执行: openoctopus init --force
+1. 初始化项目: openoctopus init
+2. 创建需求文件: echo "# Test" > requirement.md
+3. 执行: openoctopus run --config octopus.yaml --requirement requirement.md
 4. 检查退出码: 0
-5. 检查: 配置文件已重置
+5. 检查输出包含 session_id
+6. 检查产物文件生成
+7. 检查 session 状态文件
 ```
 
 **期望结果**:
 - 退出码: 0
-- 目录结构保留
-- 配置文件重新生成
-- 输出警告信息: "Force mode: existing config may be overwritten"
+- 输出显示执行进度和完成信息
+- 生成 session_id（如 sess_xxx）
+- 产物文件 `.octopus/sessions/sess_xxx/artifacts/{name}.md` 存在
+- session.state.md 状态为 COMPLETED
 
-**测试文件**: `tests/e2e/test_init.py::test_init_force`
+**测试文件**: `tests/e2e/test_run.py::test_run_single_stage`
 
 ---
 
-### 场景 5: 配置校验通过
+### 场景 14: 工作流执行 - 多 Stage 顺序
 
-**测试目标**: 验证有效配置能通过校验
+**测试目标**: 验证多个 stage 按顺序执行
 
 **前置条件**:
-- 存在有效的 octopus.yaml 文件
+- 配置包含 2-3 个 stage
 
 **测试步骤**:
 ```bash
-1. 创建有效配置:
-   version: "2.1"
-   meta:
-     workflow_id: "test"
-     name: "Test"
-   runtime:
-     workspace:
-       root: ".octopus"
-   llm_profiles:
-     codex:
-       provider: "codex"
-       mode: "cli"
-   tool_registry:
-     builtin:
-       file_read:
-         module: "openoctopus.tools.file"
-         class: "FileReadTool"
-   roles:
-     - id: "test_role"
-       name: "Test"
-       type: "simple"
-       llm_profile: "codex"
-       system_prompt: "Test prompt"
-   stages:
-     - id: "test_stage"
-       name: "Test Stage"
-       role: "test_role"
-       input:
-         - type: "requirement_file"
-           path: "./test.md"
-       output:
-         - type: "artifact"
-           name: "result"
-   transitions:
-     - from: "test_stage"
-       to: "__END__"
-
-2. 执行: openoctopus validate --config ./octopus.yaml
-3. 检查退出码: 0
+1. 创建多 stage 配置
+2. 执行: openoctopus run -c config.yaml -r req.md
+3. 验证 stages 按数组顺序执行
+4. 验证每个 stage 的产物都生成
 ```
 
 **期望结果**:
 - 退出码: 0
-- 输出成功信息: "✓ Configuration is valid"
-- verbose 模式显示详细校验过程
+- timeline.md 记录各 stage 开始/完成时间
+- 最终状态 COMPLETED
 
-**测试文件**: `tests/e2e/test_validate.py::test_validate_success`
-
----
-
-### 场景 6: 配置校验失败 - YAML 语法错误
-
-**测试目标**: 验证 YAML 语法错误的检测
-
-**前置条件**:
-- 存在语法错误的 YAML 文件
-
-**测试步骤**:
-```bash
-1. 创建无效 YAML:
-   version: "2.1
-   meta:
-     workflow_id: test
-     # 缺少闭合引号，缩进错误等
-
-2. 执行: openoctopus validate --config ./invalid.yaml
-3. 检查退出码: 2
-```
-
-**期望结果**:
-- 退出码: 2
-- 输出解析错误信息，包含行号和列号
-- 指出具体语法问题
-
-**测试文件**: `tests/e2e/test_validate.py::test_validate_yaml_syntax_error`
+**测试文件**: `tests/e2e/test_run.py::test_run_multiple_stages`
 
 ---
 
-### 场景 7: 配置校验失败 - 结构错误（必填字段缺失）
+### 场景 15: Session 状态查询
 
-**测试目标**: 验证必填字段缺失的检测
+**测试目标**: 验证 `openoctopus status` 显示正确状态
 
 **前置条件**:
-- 配置缺少必填字段
+- 已完成一次工作流执行
 
 **测试步骤**:
 ```bash
-1. 创建配置（缺少 meta.workflow_id）:
-   version: "2.1"
-   meta:
-     name: "Test"  # 缺少 workflow_id
-
-2. 执行: openoctopus validate --config ./incomplete.yaml
-3. 检查退出码: 3
+1. 执行 run 命令获取 session_id
+2. 执行: openoctopus status --session sess_xxx
+3. 检查输出
 ```
 
 **期望结果**:
-- 退出码: 3
-- 输出字段错误: "Field required: meta.workflow_id"
-- 错误类型: structure
-
-**测试文件**: `tests/e2e/test_validate.py::test_validate_missing_required_field`
-
----
-
-### 场景 8: 配置校验失败 - 引用错误（Role 不存在）
-
-**测试目标**: 验证 stage.role 引用不存在的 role 时出错
-
-**前置条件**:
-- stage 引用了未定义的 role
-
-**测试步骤**:
-```bash
-1. 创建配置:
-   # ... 基础配置 ...
-   roles:
-     - id: "role_a"
-       # ...
-   stages:
-     - id: "stage_1"
-       role: "nonexistent_role"  # 不存在的 role
-       # ...
-
-2. 执行: openoctopus validate --config ./bad_ref.yaml
-3. 检查退出码: 3
-```
-
-**期望结果**:
-- 退出码: 3
-- 错误信息: "Stage 'stage_1' references undefined role 'nonexistent_role'"
-- 错误类型: reference
-
-**测试文件**: `tests/e2e/test_validate.py::test_validate_invalid_role_reference`
-
----
-
-### 场景 9: 配置校验失败 - 引用错误（Stage 不存在）
-
-**测试目标**: 验证 transition 引用不存在的 stage
-
-**前置条件**:
-- transition 引用了未定义的 stage
-
-**测试步骤**:
-```bash
-1. 创建配置:
-   # ... 基础配置 ...
-   stages:
-     - id: "stage_a"
-       # ...
-   transitions:
-     - from: "stage_a"
-       to: "nonexistent_stage"
-
-2. 执行: openoctopus validate --config ./bad_transition.yaml
-3. 检查退出码: 3
-```
-
-**期望结果**:
-- 退出码: 3
-- 错误信息: "Transition references undefined stage 'nonexistent_stage'"
-- 错误类型: reference
-
-**测试文件**: `tests/e2e/test_validate.py::test_validate_invalid_stage_reference`
-
----
-
-### 场景 10: 配置校验失败 - 环路检测
-
-**测试目标**: 验证 transition 环路的检测
-
-**前置条件**:
-- transition 形成环路
-
-**测试步骤**:
-```bash
-1. 创建配置:
-   # ... 基础配置 ...
-   stages:
-     - id: "stage_a"
-       # ...
-     - id: "stage_b"
-       # ...
-   transitions:
-     - from: "stage_a"
-       to: "stage_b"
-     - from: "stage_b"
-       to: "stage_a"  # 形成环路
-
-2. 执行: openoctopus validate --config ./loop.yaml
-3. 检查退出码: 3
-```
-
-**期望结果**:
-- 退出码: 3
-- 错误信息: "Cycle detected in transitions: stage_a -> stage_b -> stage_a"
-- 错误类型: loop
-
-**测试文件**: `tests/e2e/test_validate.py::test_validate_loop_detection`
-
----
-
-### 场景 11: 配置校验 - 安全警告
-
-**测试目标**: 验证 shell_exec 工具的安全警告
-
-**前置条件**:
-- role 使用 shell_exec 但未配置 security.shell
-
-**测试步骤**:
-```bash
-1. 创建配置:
-   # ... 基础配置 ...
-   roles:
-     - id: "danger_role"
-       # ...
-       tools: ["shell_exec"]
-   # 缺少 security.shell 配置
-
-2. 执行: openoctopus validate --config ./no_security.yaml
-3. 检查退出码: 0（警告不阻止通过）
-```
-
-**期望结果**:
+- 显示 session_id, workflow_id, status
+- 显示所有 stages 状态
+- 显示产物列表和路径
 - 退出码: 0
-- 警告信息: "Role 'danger_role' uses 'shell_exec' without security.shell configuration"
-- 错误类型: warning
 
-**测试文件**: `tests/e2e/test_validate.py::test_validate_security_warning`
+**测试文件**: `tests/e2e/test_status.py::test_status_completed_session`
 
 ---
 
-### 场景 12: 配置校验 - 多种格式输出
+### 场景 16: Session 列表查询
 
-**测试目标**: 验证不同输出格式
+**测试目标**: 验证 `openoctopus list` 显示所有 sessions
 
 **前置条件**:
-- 存在包含多个错误的配置文件
+- 已执行多次工作流
 
 **测试步骤**:
 ```bash
-1. 执行: openoctopus validate --config ./errors.yaml --format table
-2. 执行: openoctopus validate --config ./errors.yaml --format json
-3. 执行: openoctopus validate --config ./errors.yaml --format yaml
+1. 执行多次 run 命令
+2. 执行: openoctopus list
 ```
 
 **期望结果**:
-- table 格式: 表格形式显示错误
-- json 格式: 可解析的 JSON 输出
-- yaml 格式: YAML 格式的错误列表
+- 列出所有 sessions
+- 显示创建时间、状态、workflow_id
+- 退出码: 0
 
-**测试文件**: `tests/e2e/test_validate.py::test_validate_output_formats`
+**测试文件**: `tests/e2e/test_list.py::test_list_sessions`
 
 ---
 
-### 场景 13: Version 命令
+### 场景 17: 执行失败处理
+
+**测试目标**: 验证 stage 执行失败时的处理
+
+**前置条件**:
+- 配置有效但 role 执行会失败（如 LLM CLI 不存在）
+
+**测试步骤**:
+```bash
+1. 配置使用不存在的 CLI 路径: cli_path: "/nonexistent/claude"
+2. 执行: openoctopus run -c config.yaml -r req.md
+3. 检查退出码和错误信息
+4. 检查 session 状态
+```
+
+**期望结果**:
+- 退出码: 5（执行失败）
+- 错误信息清晰：指出 CLI 未找到
+- session 状态为 FAILED
+- timeline 记录失败原因
+
+**测试文件**: `tests/e2e/test_run.py::test_run_llm_not_found`
+
+---
+
+### 场景 18: 产物文件验证
+
+**测试目标**: 验证产物文件格式正确
+
+**前置条件**:
+- 已完成一次执行
+
+**测试步骤**:
+```bash
+1. 执行 run 命令
+2. 读取产物文件: .octopus/sessions/sess_xxx/artifacts/{name}.md
+3. 验证格式
+```
+
+**期望结果**:
+- 文件存在且可读
+- 包含 Metadata 区块
+- 包含 Content 区块
+- Metadata 包含 artifact_name, stage_id, created_at 等
+
+**测试文件**: `tests/e2e/test_run.py::test_artifact_format`
+
+---
+
+### 场景 19: Session State 文件验证
+
+**测试目标**: 验证 session.state.md 格式
+
+**前置条件**:
+- 已完成一次执行
+
+**测试步骤**:
+```bash
+1. 执行 run 命令
+2. 读取: .octopus/sessions/sess_xxx/session.state.md
+```
+
+**期望结果**:
+- 包含 Metadata 区块（session_id, workflow_id, status）
+- 包含 Stages 表格
+- 包含 Artifacts 列表
+
+**测试文件**: `tests/e2e/test_run.py::test_session_state_format`
+
+---
+
+### 场景 20: 无效 Session ID 查询
+
+**测试目标**: 验证查询不存在的 session
+
+**测试步骤**:
+```bash
+1. 执行: openoctopus status --session nonexistent
+```
+
+**期望结果**:
+- 退出码: 6
+- 错误信息: "Session 'nonexistent' not found"
+
+**测试文件**: `tests/e2e/test_status.py::test_status_invalid_session`
+
+---
+
+### 场景 21: 执行时配置校验失败
+
+**测试目标**: 验证 run 命令执行前会校验配置
+
+**前置条件**:
+- 存在无效配置
+
+**测试步骤**:
+```bash
+1. 创建引用错误的配置
+2. 执行: openoctopus run -c invalid.yaml -r req.md
+```
+
+**期望结果**:
+- 退出码: 3
+- 错误信息指出配置错误
+- 不创建 session
+
+**测试文件**: `tests/e2e/test_run.py::test_run_invalid_config`
+
+---
+
+### 场景 22: Version 命令
 
 **测试目标**: 验证 version 命令
 
@@ -417,218 +266,162 @@
 
 ---
 
-### 场景 14: Run 命令占位
+### 场景 23: 完整用户旅程
 
-**测试目标**: 验证 run 命令占位提示
-
-**测试步骤**:
-```bash
-1. 执行: openoctopus run
-2. 执行: openoctopus run --config ./octopus.yaml
-```
-
-**期望结果**:
-- 输出: "Run command is not implemented yet. Coming in Phase 2."
-- 退出码: 0（占位命令不报错）
-
-**测试文件**: `tests/e2e/test_run.py::test_run_placeholder`
-
----
-
-### 场景 15: 帮助信息
-
-**测试目标**: 验证所有命令的帮助信息
+**测试目标**: 验证从 init 到获取结果的完整流程
 
 **测试步骤**:
 ```bash
-1. 执行: openoctopus --help
-2. 执行: openoctopus init --help
-3. 执行: openoctopus validate --help
-4. 执行: openoctopus run --help
-5. 执行: openoctopus version --help
+1. mkdir test_project && cd test_project
+2. openoctopus init
+3. echo "# Feature" > requirement.md
+4. openoctopus validate -c octopus.yaml
+5. openoctopus run -c octopus.yaml -r requirement.md
+6. 记录输出的 session_id
+7. openoctopus status -s {session_id}
+8. openoctopus list
+9. cat .octopus/sessions/{session_id}/artifacts/*.md
 ```
 
 **期望结果**:
-- 每个命令都显示完整的 help 信息
-- 包含参数说明和示例
-- 格式美观（Rich 渲染）
+- 所有命令成功（退出码 0）
+- 最终产物文件包含分析内容
+- session 状态为 COMPLETED
 
-**测试文件**: `tests/e2e/test_help.py::test_all_commands_help`
+**测试文件**: `tests/e2e/test_full_workflow.py::test_complete_user_journey`
 
 ---
 
-## 3. 测试数据结构
+## 3. 测试辅助工具
 
-### 3.1 最小有效配置
+### 3.1 Mock LLM 执行
 
-```yaml
+```python
+@pytest.fixture
+def mock_llm_executor(monkeypatch):
+    """Mock LLM 执行，避免实际调用 CLI"""
+    def mock_execute(*args, **kwargs):
+        return ExecutionResult(
+            status="completed",
+            output="# Analysis Result\n\nThis is a mock analysis.",
+            artifacts=["analysis_report"],
+            error_message=None
+        )
+
+    monkeypatch.setattr(
+        "openoctopus.executor.role_executor.RoleExecutor.execute",
+        mock_execute
+    )
+```
+
+### 3.2 配置生成器（增强）
+
+```pythonndef create_executable_config(tmp_path: Path) -> Path:
+    """创建可直接运行的配置"""
+    config = tmp_path / "octopus.yaml"
+    config.write_text("""
 version: "2.1"
-
 meta:
-  workflow_id: "minimal-test"
-  name: "Minimal Test"
-
+  workflow_id: "test"
+  name: "Test"
 runtime:
   workspace:
     root: ".octopus"
-    sessions_dir: ".octopus/sessions"
-    artifacts_dir: ".octopus/artifacts"
-    logs_dir: ".octopus/logs"
-
 llm_profiles:
-  codex_cli:
-    provider: "codex"
+  default:
+    provider: "claude_code"
     mode: "cli"
-    cli_path: "codex"
-
 tool_registry:
-  builtin:
-    file_read:
-      module: "openoctopus.tools.file"
-      class: "FileReadTool"
-    file_write:
-      module: "openoctopus.tools.file"
-      class: "FileWriteTool"
-
+  builtin: {}
 roles:
-  - id: "review_agent"
-    name: "代码审查员"
+  - id: "analyzer"
+    name: "Analyzer"
     type: "simple"
-    llm_profile: "codex_cli"
-    system_prompt: "你是一位严格的代码审查员..."
-    tools: ["file_read", "file_write"]
-
+    llm_profile: "default"
+    system_prompt: "Analyze the requirement."
 stages:
-  - id: "review"
-    name: "代码审查"
-    role: "review_agent"
+  - id: "analyze"
+    name: "Analyze"
+    role: "analyzer"
     input:
       - type: "requirement_file"
-        path: "./review.diff"
+        path: "./requirement.md"
     output:
       - type: "artifact"
-        name: "review_result"
-
+        name: "analysis"
 transitions:
-  - from: "review"
+  - from: "analyze"
     to: "__END__"
+""")
+    return config
 ```
 
-### 3.2 无效配置示例
+### 3.3 Session 验证器
 
-**结构错误**:
-```yaml
-version: "2.1"
-meta:
-  name: "Missing workflow_id"  # 缺少 workflow_id
-```
+```python
+def assert_session_exists(tmp_path: Path, session_id: str):
+    """验证 session 目录结构"""
+    session_dir = tmp_path / ".octopus" / "sessions" / session_id
+    assert session_dir.exists()
+    assert (session_dir / "session.state.md").exists()
+    assert (session_dir / "timeline.md").exists()
+    assert (session_dir / "artifacts").exists()
 
-**引用错误**:
-```yaml
-# roles 未定义 test_role，但 stage 引用了
-stages:
-  - id: "test"
-    role: "test_role"  # 错误
-```
-
-**环路配置**:
-```yaml
-stages:
-  - id: "a"
-  - id: "b"
-transitions:
-  - from: "a"
-    to: "b"
-  - from: "b"
-    to: "a"  # 环路
+def assert_artifact_exists(tmp_path: Path, session_id: str, artifact_name: str):
+    """验证产物存在"""
+    artifact_path = tmp_path / ".octopus" / "sessions" / session_id / "artifacts" / f"{artifact_name}.md"
+    assert artifact_path.exists()
+    content = artifact_path.read_text()
+    assert "## Metadata" in content
+    assert "## Content" in content
 ```
 
 ---
 
-## 4. 测试辅助工具
+## 4. 测试执行
 
-### 4.1 配置生成器
-
-```python
-def create_minimal_config(tmp_path: Path) -> Path:
-    """创建最小有效配置"""
-    config = tmp_path / "octopus.yaml"
-    config.write_text(MINIMAL_CONFIG)
-    return config
-
-def create_invalid_config(tmp_path: Path, error_type: str) -> Path:
-    """创建特定类型的无效配置"""
-    configs = {
-        "syntax": INVALID_SYNTAX,
-        "missing_field": MISSING_FIELD,
-        "bad_reference": BAD_REFERENCE,
-        "loop": LOOP_CONFIG,
-    }
-    config = tmp_path / "invalid.yaml"
-    config.write_text(configs[error_type])
-    return config
-```
-
-### 4.2 结果验证器
-
-```python
-def assert_exit_code(result, expected: int):
-    """验证退出码"""
-    assert result.exit_code == expected, f"Expected {expected}, got {result.exit_code}"
-
-def assert_output_contains(result, text: str):
-    """验证输出包含指定文本"""
-    assert text in result.output
-
-def assert_valid_json_output(result):
-    """验证输出为有效 JSON"""
-    import json
-    data = json.loads(result.output)
-    assert "valid" in data
-    assert "errors" in data
-```
-
----
-
-## 5. 测试执行
-
-### 5.1 执行全部 E2E 测试
+### 4.1 全部 E2E 测试
 
 ```bash
 pytest tests/e2e/ -v --cov=openoctopus --cov-report=html
 ```
 
-### 5.2 执行特定测试
+### 4.2 分类执行
 
 ```bash
-# 仅 init 测试
+# Init 相关
 pytest tests/e2e/test_init.py -v
 
-# 仅 validate 测试
+# Validate 相关
 pytest tests/e2e/test_validate.py -v
 
-# 特定场景
-pytest tests/e2e/test_validate.py::test_validate_loop_detection -v
+# Run 相关（核心）
+pytest tests/e2e/test_run.py -v
+
+# Status/List 相关
+pytest tests/e2e/test_status.py tests/e2e/test_list.py -v
+
+# 完整流程
+pytest tests/e2e/test_full_workflow.py -v
 ```
 
-### 5.3 覆盖率要求
+### 4.3 覆盖率要求
 
 | 模块 | 目标覆盖率 |
 |------|-----------|
 | cli/commands/ | 90% |
 | config/ | 85% |
 | core/ | 80% |
+| **executor/** | **85%** |
 | 整体 | 85% |
 
 ---
 
-## 6. 持续集成
-
-### 6.1 CI 配置
+## 5. 持续集成
 
 ```yaml
 # .github/workflows/test.yml
-name: E2E Tests
+name: Tests
 on: [push, pull_request]
 jobs:
   test:
@@ -637,11 +430,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v1
       - run: uv sync
-      - run: uv run pytest tests/e2e/ -v --cov=openoctopus
+      - run: uv run pytest tests/ -v --cov=openoctopus --cov-report=xml
+      - uses: codecov/codecov-action@v3
+        with:
+          files: ./coverage.xml
 ```
-
-### 6.2 测试报告
-
-- 生成 HTML 覆盖率报告
-- 生成 JUnit XML 格式结果
-- 失败时截图/日志归档
