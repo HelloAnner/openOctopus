@@ -72,7 +72,7 @@ func (e *Engine) TickRole(roleID string) (RoleTickResult, error) {
 	if reset.Status == resetStatusRequested {
 		return e.applyReset(roleID, state, reset)
 	}
-	if interrupted, interruptErr := e.handleInterrupt(roleID, state); interruptErr != nil || interrupted.Progressed {
+	if interrupted, interruptErr := e.handleInterrupt(roleID, state); interruptErr != nil || interrupted.Progressed || interrupted.Skipped {
 		return interrupted, interruptErr
 	}
 	if !shouldExecute(state, context, inbox) {
@@ -257,32 +257,6 @@ func (e *Engine) commitRoleOffset(roleID string) error {
 		return nil
 	}
 	return e.bus.CommitOffset(lease, eventbus.OffsetCommit{ConsumerID: "role-runtime/" + roleID, LastEventID: updatedTail.EventID, LastSequence: updatedTail.Sequence, Note: "role runtime tick applied"})
-}
-
-func (e *Engine) handleInterrupt(roleID string, state roleState) (RoleTickResult, error) {
-	records, err := e.bus.ReadInterrupts()
-	if err != nil {
-		return RoleTickResult{}, nil
-	}
-	for _, record := range records {
-		if record.TargetRoleID != roleID || record.Status != eventbus.InterruptStatusRequested {
-			continue
-		}
-		state.Status = statusInterrupted
-		if err := writeRoleState(e.paths.rolesDir, state); err != nil {
-			return RoleTickResult{}, err
-		}
-		if err := writeHeartbeat(e.paths.rolesDir, buildHeartbeat(roleID, state, 120)); err != nil {
-			return RoleTickResult{}, err
-		}
-		lease, acquireErr := e.bus.AcquireLock("role-runtime/"+roleID, 30*time.Second)
-		if acquireErr == nil {
-			_, _ = e.bus.AcknowledgeInterrupt(lease, record.InterruptID)
-			_ = e.bus.ReleaseLock(lease)
-		}
-		return RoleTickResult{RoleID: roleID, Progressed: true, Status: statusInterrupted}, nil
-	}
-	return RoleTickResult{RoleID: roleID}, nil
 }
 
 func (e *Engine) applyReset(roleID string, state roleState, reset roleReset) (RoleTickResult, error) {

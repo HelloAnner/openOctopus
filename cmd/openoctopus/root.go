@@ -11,5 +11,9 @@ func NewRootCommand() *cobra.Command {
 	}
 	command.AddCommand(newValidateCommand())
 	command.AddCommand(newRunCommand())
+	command.AddCommand(newInterruptCommand())
+	command.AddCommand(newInterruptAllCommand())
+	command.AddCommand(newInjectCommand())
+	command.AddCommand(newResumeCommand())
 	return command
 }

@@ -2,7 +2,7 @@
 
 ## 运行方式
 
-本仓库当前的 `config`、`session`、`eventbus`、`orchestrator` 模块真实 E2E 默认直接在宿主机运行，不使用 Docker。
+本仓库当前的 `config`、`session`、`eventbus`、`orchestrator`、`role-runtime`、`artifact`、`human-gate` 模块真实 E2E 默认直接在宿主机运行，不使用 Docker。
 
 测试会：
 
@@ -12,7 +12,7 @@
 4. 对 `eventbus` 额外构建一个测试专用 `eventbus-harness` 二进制。
 5. 对 `orchestrator` 额外构建一个测试专用 `orchestrator-harness` 二进制。
 6. 对 `role-runtime` 额外构建一个测试专用 `role-runtime-harness` 二进制。
-7. 用 `pytest` 黑盒调用 `validate` / `run` 命令和 harness 子命令。
+7. 用 `pytest` 黑盒调用 `validate` / `run` / `interrupt` / `interrupt-all` / `inject` / `resume` 命令和 harness 子命令。
 
 ## 前置条件
 
@@ -52,10 +52,16 @@ python3 -m pytest e2e/orchestrator -v
 python3 -m pytest e2e/role-runtime -v
 ```
 
+只跑 `human-gate`：
+
+```bash
+python3 -m pytest e2e/human-gate -v
+```
+
 全量 E2E：
 
 ```bash
-python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime -v
+python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime e2e/artifact e2e/human-gate -v
 ```
 
 或：

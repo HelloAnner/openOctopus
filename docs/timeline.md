@@ -9,6 +9,9 @@
     - `2026-03-08-role-runtime-001-implementation.md`
       - 做什么：拆解 role-runtime 001 的实现顺序、测试入口、代码落位和最终验证步骤。
       - 核心改进点/修改差异：在完成 role-runtime 001 PRD 与 E2E 设计后，进一步补上一份可直接执行的实现计划，把抽象设计收敛为可按 TDD 推进的落地任务。
+    - `2026-03-08-human-gate-001-implementation.md`
+      - 做什么：拆解 human-gate 001 的实现顺序、命令入口、恢复逻辑、E2E 夹具和最终验证步骤。
+      - 核心改进点/修改差异：在完成 human-gate 001 PRD、E2E 与模块内 plans 设计后，进一步补上一份可直接执行的实现计划，把“人工打断 / 注入 / 恢复”收敛成可按 TDD 推进的落地任务。
   - `cli/`
     - `prd.md`
       - 做什么：规划 CLI 生命周期命令、状态查看、调试与报告输出文档。
@@ -116,6 +119,19 @@
     - `prd.md`
       - 做什么：规划人工审批、打断、注入和 reroute 协作文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-session-resolution-and-message-append.md`
+        - `02-interrupt-service-and-cli.md`
+        - `03-role-runtime-interrupt-gate.md`
+        - `04-resume-requeue-and-loop.md`
+        - `05-interrupt-all-and-command-tests.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 human-gate 首版的人工中断、人工消息注入、批量等待人工、恢复续跑与黑盒验证方案。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E、plans 与实现计划，把 human-gate 从“只有职责说明”推进到“可与 event-bus / orchestrator / role-runtime 联动的正式人工介入闭环”。
   - `recovery/`
     - `prd.md`
       - 做什么：规划失败恢复、事件回放、checkpoint 重建与降级策略文档。
