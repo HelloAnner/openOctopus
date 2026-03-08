@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/anner/openoctopus/internal/eventbus"
+	"github.com/anner/openoctopus/internal/recovery"
 )
 
 func TestTickAppliesConclusionStatuses(t *testing.T) {
@@ -73,4 +74,42 @@ func TestTickAppliesConclusionStatuses(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTickWritesRecoveryCheckpoint(t *testing.T) {
+	useFixedOrchestratorClock(t)
+	result := createOrchestratorTestSession(t)
+	store := eventbus.NewStore(result.SessionDir)
+	if err := store.Bootstrap(eventbus.BootstrapOptions{SessionID: result.SessionID, SessionDir: result.SessionDir, WorkflowID: "orchestrator-workflow", MetadataRef: "metadata.md"}); err != nil {
+		t.Fatalf("bootstrap bus: %v", err)
+	}
+	engine := NewEngine(result.SessionDir)
+	if err := engine.Bootstrap(); err != nil {
+		t.Fatalf("bootstrap orchestrator: %v", err)
+	}
+	if _, err := engine.Tick(); err != nil {
+		t.Fatalf("dispatch tick: %v", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(result.SessionDir, "state", "checkpoints"))
+	if err != nil {
+		t.Fatalf("read checkpoints: %v", err)
+	}
+	if len(entries) < 2 {
+		t.Fatalf("expected incremental checkpoint after dispatch, got %d", len(entries))
+	}
+	content, err := os.ReadFile(filepath.Join(result.SessionDir, "state", "checkpoints", entries[len(entries)-1].Name()))
+	if err != nil {
+		t.Fatalf("read checkpoint: %v", err)
+	}
+	if !strings.Contains(string(content), "kind: stage-stage_a-dispatched") {
+		t.Fatalf("expected dispatched checkpoint, got %q", string(content))
+	}
+	stateContent, err := os.ReadFile(filepath.Join(result.SessionDir, "session.state.md"))
+	if err != nil {
+		t.Fatalf("read state: %v", err)
+	}
+	if !strings.Contains(string(stateContent), "checkpoint_seq: 1") {
+		t.Fatalf("expected checkpoint seq 1, got %q", string(stateContent))
+	}
+	_ = recovery.CheckpointInput{}
 }

@@ -3,130 +3,57 @@
 - `docs/`
   - `prd/`
     - `prd-001.md`
-      - 做什么：定义 OpenOctopus 首版产品定位、Go 技术路线，以及“主 Agent 唯一人机入口、子 Agent 基于 Markdown 被动触发”的协作总线。
+      - 做什么：定义 OpenOctopus 首版产品定位、Go 技术路线，以及"主 Agent 唯一人机入口、子 Agent 基于 Markdown 被动触发"的协作总线。
       - 核心改进点/修改差异：建立了主 Agent 写入 `human_messages.md`、子 Agent 重读 `context.md/inbox.md`、打断与手动输入统一事件化落盘的首版基线，替换原先更偏直接会话驱动的模糊协作方式。
-  - `plans/`
-    - `2026-03-08-role-runtime-001-implementation.md`
-      - 做什么：拆解 role-runtime 001 的实现顺序、测试入口、代码落位和最终验证步骤。
-      - 核心改进点/修改差异：在完成 role-runtime 001 PRD 与 E2E 设计后，进一步补上一份可直接执行的实现计划，把抽象设计收敛为可按 TDD 推进的落地任务。
-    - `2026-03-08-human-gate-001-implementation.md`
-      - 做什么：拆解 human-gate 001 的实现顺序、命令入口、恢复逻辑、E2E 夹具和最终验证步骤。
-      - 核心改进点/修改差异：在完成 human-gate 001 PRD、E2E 与模块内 plans 设计后，进一步补上一份可直接执行的实现计划，把“人工打断 / 注入 / 恢复”收敛成可按 TDD 推进的落地任务。
-    - `2026-03-08-cli-001-implementation.md`
-      - 做什么：拆解 cli 001 的输出协议、status 命令、退出码、E2E 夹具和最终验证步骤。
-      - 核心改进点/修改差异：在完成 cli 001 PRD、E2E 与模块内 plans 设计后，进一步补上一份可直接执行的实现计划，把“统一输出 / 状态观测 / 最小退出码”收敛成可按 TDD 推进的落地任务。
   - `cli/`
     - `prd.md`
       - 做什么：规划 CLI 生命周期命令、状态查看、调试与报告输出文档。
       - 核心改进点/修改差异：保留模块总纲边界，作为 `001` 版本化落地前的职责说明。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-output-model-and-exit-codes.md`
-        - `02-session-resolution-and-status-reader.md`
-        - `03-validate-run-format-unification.md`
-        - `04-human-gate-command-format-unification.md`
-        - `05-status-command-and-root-wiring.md`
-        - `06-e2e-fixtures-and-tests.md`
-      - 做什么：定义 cli 首版的统一 `text/json` 输出、最小退出码、session 状态观测与正式命令协议，并按实现主题拆分执行计划。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 与 plans，把 cli 从“只有职责说明”推进到“可按任务顺序实现”的首版正式门面协议。
+      - 做什么：定义 cli 首版的统一 `text/json` 输出、最小退出码、session 状态观测与正式命令协议。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，把 cli 推进到可实现的阶段。
   - `config/`
     - `prd.md`
       - 做什么：规划 YAML 配置模型、默认值策略、静态校验和安全限制文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，作为版本化设计前的模块边界说明。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `yaml-rules.md`
-      - `plans/`
-        - `README.md`
-        - `01-config-models.md`
-        - `02-loader-and-override.md`
-        - `03-defaults-and-effective-config.md`
-        - `04-validator-and-error-model.md`
-        - `05-cli-validate-and-run-gate.md`
-        - `06-e2e-fixtures-and-tests.md`
       - 做什么：定义 config 首版的配置来源优先级、强类型模型、默认值注入、静态校验、错误输出协议、YAML 生成规则和 `validate` / `run` 阻断边界。
-      - 核心改进点/修改差异：在原有 `001` PRD 与 E2E 基线上，继续补齐 `yaml-rules.md` 和按实现主题拆分的 plans 目录，使 config 首版从“可评审”推进到“可按任务拆解执行”。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 config 达到可实现的阶段。
   - `session/`
     - `prd.md`
       - 做什么：规划 session 生命周期、工作目录结构、状态快照与 checkpoint 文档。
-      - 核心改进点/修改差异：先建立模块总纲边界，明确 session 作为文件系统会话载体的职责，再由下方 `001` 版本继续细化首版落地协议。
+      - 核心改进点/修改差异：先建立模块总纲边界，明确 session 作为文件系统会话载体的职责。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-session-layout-and-types.md`
-        - `02-path-resolution-and-session-id.md`
-        - `03-initial-files-and-config-snapshot.md`
-        - `04-atomic-write-and-rollback.md`
-        - `05-run-command-integration.md`
-        - `06-e2e-fixtures-and-tests.md`
-      - 做什么：定义 session 首版的工作目录骨架、初始化元数据、状态快照、时间线、初始 checkpoint、有效配置快照协议，并按实现主题拆分执行计划。
-      - 核心改进点/修改差异：在原有 `001` PRD 与 E2E 基线上，继续补齐 `plans/` 目录，把 session 首版从“可评审”推进到“可按任务串行实施”，替换原先只有目标文档、缺少实现拆分的状态。
+      - 做什么：定义 session 首版的工作目录骨架、初始化元数据、状态快照、时间线、初始 checkpoint、有效配置快照协议。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 session 达到可实现的阶段。
   - `event-bus/`
     - `prd.md`
       - 做什么：规划事件总线、WAL 落盘、锁协议、offset 与 heartbeat 文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，作为版本化设计前的模块边界说明。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-bootstrap-and-store-types.md`
-        - `02-event-wal-and-hash-chain.md`
-        - `03-lock-lease-and-conflict-control.md`
-        - `04-offsets-and-interrupt-projections.md`
-        - `05-service-facade-and-run-integration.md`
-        - `06-e2e-fixtures-and-tests.md`
       - 做什么：定义 event-bus 首版的 bus bootstrap、事件 WAL、哈希链校验、租约锁、offset 投影、interrupt 投影与黑盒验证方案。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 和 plans，把 event-bus 从“只有职责说明”推进到“可按任务顺序实现”的首版协议基线。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 event-bus 达到可实现的阶段。
   - `orchestrator/`
     - `prd.md`
       - 做什么：规划主 Agent 调度、任务拆分、阶段流转与回路控制文档。
       - 核心改进点/修改差异：保留模块总纲边界，作为 `001` 版本化落地前的职责说明。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-bootstrap-and-planner-layout.md`
-        - `02-stage-graph-and-schedule-projections.md`
-        - `03-requirement-snapshot-and-human-message-cursor.md`
-        - `04-dispatch-packages-and-role-context.md`
-        - `05-decision-loop-and-run-integration.md`
-        - `06-e2e-fixtures-and-tests.md`
       - 做什么：定义 orchestrator 首版的 planner bootstrap、阶段图投影、人工输入吸收、角色任务分发、结论收口与黑盒验证方案。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 和 plans，把 orchestrator 从“只有职责说明”推进到“可按任务顺序实现”的首版协议基线。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 orchestrator 达到可实现的阶段。
   - `role-runtime/`
     - `prd.md`
       - 做什么：规划角色执行器、回合文件协议、结论回传与状态同步文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
       - 做什么：定义 role-runtime 首版的被动任务消费、单回合执行、状态/心跳/turn/conclusion/outbox 文件协议，以及真实 Codex + deterministic executor 的黑盒验证方案。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 role-runtime 从“只有职责说明”进入“可围绕 orchestrator 的 context/inbox 协议实施与验证”的首版落地阶段。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 role-runtime 进入首版落地阶段。
   - `artifact/`
     - `prd.md`
       - 做什么：规划产物索引、版本管理、差异对比与血缘追踪文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-bootstrap-and-index-layout.md`
-        - `02-publish-version-and-manifest.md`
-        - `03-input-resolution-and-context-projection.md`
-        - `04-lineage-and-bus-events.md`
-        - `05-runtime-and-run-integration.md`
-        - `06-e2e-fixtures-and-tests.md`
       - 做什么：定义 artifact 首版的 session 内 staging、版本快照、索引、diff 摘要、血缘追踪、输入解析与真实 Codex 简单产物闭环。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 与 plans，把 artifact 从“只有职责说明”推进到“可与 orchestrator / role-runtime 协同工作的正式版本化产物协议”。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 artifact 达到可实现的阶段。
   - `tmux/`
     - `prd.md`
       - 做什么：规划 TMUX 布局、pane 管理、角色切换和运行可视化文档。
@@ -136,22 +63,15 @@
       - 做什么：规划人工审批、打断、注入和 reroute 协作文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
     - `001/`
-      - `prd.md`
-      - `e2e.md`
-      - `plans/`
-        - `README.md`
-        - `01-session-resolution-and-message-append.md`
-        - `02-interrupt-service-and-cli.md`
-        - `03-role-runtime-interrupt-gate.md`
-        - `04-resume-requeue-and-loop.md`
-        - `05-interrupt-all-and-command-tests.md`
-        - `06-e2e-fixtures-and-tests.md`
       - 做什么：定义 human-gate 首版的人工中断、人工消息注入、批量等待人工、恢复续跑与黑盒验证方案。
-      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E、plans 与实现计划，把 human-gate 从“只有职责说明”推进到“可与 event-bus / orchestrator / role-runtime 联动的正式人工介入闭环”。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 human-gate 达到可实现的阶段。
   - `recovery/`
     - `prd.md`
       - 做什么：规划失败恢复、事件回放、checkpoint 重建与降级策略文档。
-      - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+      - 核心改进点/修改差异：保留模块总纲边界，作为 `001` 版本化落地前的职责说明。
+    - `001/`
+      - 做什么：定义 recovery 首版的 session 校验、事件链验证、增量 checkpoint、状态修复、正式 recover 命令与黑盒验证方案。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 recovery 达到可实现的阶段。
   - `extension/`
     - `prd.md`
       - 做什么：规划插件系统、模板系统和扩展点装配文档。

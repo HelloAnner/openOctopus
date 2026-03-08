@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/anner/openoctopus/internal/eventbus"
+	"github.com/anner/openoctopus/internal/recovery"
 )
 
 // Interrupt 对单个角色发起中断请求。
@@ -72,6 +73,9 @@ func (s *Service) InterruptAll(options InterruptAllOptions) (InterruptAllResult,
 	if err := appendDecision(s.paths.decisionLog, "interrupt-all", "human_gate", fmt.Sprintf("- requested_roles: %d", requested), fmt.Sprintf("- reason: %s", options.Reason)); err != nil {
 		return InterruptAllResult{}, err
 	}
+	if _, err := recovery.RecordCheckpoint(s.sessionDir, recovery.CheckpointInput{Kind: "session-waiting-human", Source: "human-gate"}); err != nil {
+		return InterruptAllResult{}, err
+	}
 	return InterruptAllResult{RequestedCount: requested}, nil
 }
 
@@ -117,6 +121,9 @@ func (s *Service) Resume(options ResumeOptions) (ResumeResult, error) {
 		return result, err
 	}
 	if err := appendDecision(s.paths.decisionLog, "resume", "human_gate", fmt.Sprintf("- cleared_interrupts: %d", result.ClearedInterrupts), fmt.Sprintf("- requeued_stages: %d", result.RequeuedStages)); err != nil {
+		return result, err
+	}
+	if _, err := recovery.RecordCheckpoint(s.sessionDir, recovery.CheckpointInput{Kind: "session-resumed", Source: "human-gate"}); err != nil {
 		return result, err
 	}
 	return result, nil

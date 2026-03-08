@@ -1,0 +1,37 @@
+version: "2.1"
+
+meta:
+  workflow_id: "recovery-broken-events"
+  name: "Recovery Broken Events"
+
+llm_profiles:
+  deterministic_cli:
+    provider: "deterministic"
+    mode: "cli"
+    cli_path: "deterministic"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"

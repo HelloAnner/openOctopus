@@ -8,10 +8,11 @@ package main
 import "errors"
 
 const (
-	exitCodeSuccess                = 0
-	exitCodeCommandFailed          = 1
-	exitCodeConfigValidationFailed = 2
-	exitCodeSessionNotFound        = 3
+	exitCodeSuccess                  = 0
+	exitCodeCommandFailed            = 1
+	exitCodeConfigValidationFailed   = 2
+	exitCodeSessionNotFound          = 3
+	exitCodeRecoveryValidationFailed = 4
 )
 
 // CLIError 描述命令层稳定错误。

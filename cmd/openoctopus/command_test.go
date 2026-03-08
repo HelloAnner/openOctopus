@@ -757,6 +757,73 @@ func TestExecuteMapsExitCodes(t *testing.T) {
 	if code := execute([]string{"status", "--session", "missing", "--format", "json"}, &bytes.Buffer{}, &bytes.Buffer{}); code != exitCodeSessionNotFound {
 		t.Fatalf("expected status exit code %d, got %d", exitCodeSessionNotFound, code)
 	}
+	if code := execute([]string{"recover", "--session", "missing", "--format", "json"}, &bytes.Buffer{}, &bytes.Buffer{}); code != exitCodeSessionNotFound {
+		t.Fatalf("expected recover exit code %d, got %d", exitCodeSessionNotFound, code)
+	}
+}
+
+func TestRecoverCommandWritesJSONSummary(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeCommandConfig(t, validDeterministicCommandConfig("json-recover-success", "JSON Recover Success"))
+	sessionDir := runCommandAndParseSessionDir(t, []string{"run", "--config", configPath, "--format", "json"})
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "0")
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "SUCCESS")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"recover", "--session", sessionDir, "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("recover command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["continued"] != true {
+		t.Fatalf("expected continued=true, got %#v", data["continued"])
+	}
+	if data["recovered_status"] != "COMPLETED" {
+		t.Fatalf("expected recovered_status COMPLETED, got %#v", data["recovered_status"])
+	}
+	if data["checkpoint_ref"] == "" {
+		t.Fatalf("expected checkpoint_ref, got %#v", data["checkpoint_ref"])
+	}
+	if data["replay_ref"] != "audit/replay.md" {
+		t.Fatalf("expected replay_ref audit/replay.md, got %#v", data["replay_ref"])
+	}
+}
+
+func TestRecoverCommandFailsForBrokenEventChain(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	sessionDir := runCommandAndParseSessionDir(t, []string{"run", "--config", writeCommandConfig(t, validDeterministicCommandConfig("json-recover-broken", "JSON Recover Broken")), "--format", "json"})
+	eventsPath := filepath.Join(sessionDir, "bus", "events.md")
+	content, err := os.ReadFile(eventsPath)
+	if err != nil {
+		t.Fatalf("read events: %v", err)
+	}
+	rewritten := bytes.Replace(content, []byte("- event_hash: "), []byte("- event_hash: broken-"), 1)
+	if err := os.WriteFile(eventsPath, rewritten, 0o644); err != nil {
+		t.Fatalf("rewrite events: %v", err)
+	}
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"recover", "--session", sessionDir, "--format", "json"})
+
+	err = command.Execute()
+	if err == nil {
+		t.Fatal("expected recover command to fail")
+	}
+	payload := decodeJSONPayload(t, stderr.Bytes())
+	errorBody := payload["error"].(map[string]any)
+	if errorBody["code"] != "event_chain_broken" {
+		t.Fatalf("expected event_chain_broken, got %#v", errorBody["code"])
+	}
 }
 
 func runCommandAndParseSessionDir(t *testing.T, args []string) string {

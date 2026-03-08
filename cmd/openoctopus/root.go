@@ -6,9 +6,9 @@ import (
 
 func NewRootCommand() *cobra.Command {
 	command := &cobra.Command{
-		Use:          "openoctopus",
+		Use:           "openoctopus",
 		SilenceErrors: true,
-		SilenceUsage: true,
+		SilenceUsage:  true,
 	}
 	command.AddCommand(newValidateCommand())
 	command.AddCommand(newRunCommand())
@@ -17,5 +17,6 @@ func NewRootCommand() *cobra.Command {
 	command.AddCommand(newInterruptAllCommand())
 	command.AddCommand(newInjectCommand())
 	command.AddCommand(newResumeCommand())
+	command.AddCommand(newRecoverCommand())
 	return command
 }

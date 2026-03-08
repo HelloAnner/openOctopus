@@ -137,6 +137,23 @@ func TestResumeRequeuesBlockedStage(t *testing.T) {
 	assertContains(t, string(blockers), "summary: clear")
 }
 
+func TestInterruptAllAndResumeWriteRecoveryCheckpoint(t *testing.T) {
+	sessionDir := prepareHumanGateSession(t)
+	service := NewService(sessionDir)
+
+	if _, err := service.InterruptAll(InterruptAllOptions{Reason: "manual review"}); err != nil {
+		t.Fatalf("interrupt all: %v", err)
+	}
+	assertContains(t, readTestFile(t, filepath.Join(sessionDir, "session.state.md")), "checkpoint_seq: 2")
+	assertContains(t, latestCheckpointContent(t, sessionDir), "kind: session-waiting-human")
+
+	if _, err := service.Resume(ResumeOptions{}); err != nil {
+		t.Fatalf("resume session: %v", err)
+	}
+	assertContains(t, readTestFile(t, filepath.Join(sessionDir, "session.state.md")), "checkpoint_seq: 3")
+	assertContains(t, latestCheckpointContent(t, sessionDir), "kind: session-resumed")
+}
+
 func prepareHumanGateSession(t *testing.T) string {
 	t.Helper()
 
@@ -224,4 +241,23 @@ func assertContains(t *testing.T, content string, expected string) {
 	if !strings.Contains(content, expected) {
 		t.Fatalf("expected content to contain %q, got %q", expected, content)
 	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(content)
+}
+
+func latestCheckpointContent(t *testing.T, sessionDir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(sessionDir, "state", "checkpoints"))
+	if err != nil {
+		t.Fatalf("read checkpoints: %v", err)
+	}
+	latest := entries[len(entries)-1].Name()
+	return readTestFile(t, filepath.Join(sessionDir, "state", "checkpoints", latest))
 }

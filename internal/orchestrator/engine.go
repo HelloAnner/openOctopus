@@ -9,6 +9,7 @@ import (
 
 	"github.com/anner/openoctopus/internal/config/model"
 	"github.com/anner/openoctopus/internal/eventbus"
+	"github.com/anner/openoctopus/internal/recovery"
 )
 
 func (e *Engine) Tick() (TickResult, error) {
@@ -56,8 +57,9 @@ func (e *Engine) Tick() (TickResult, error) {
 		latestSummary = snapshot.LatestMessages
 	}
 	decisionLines := make([][]string, 0)
+	checkpointKinds := make([]string, 0)
 	blockerSummary := "clear"
-	if err := e.applyConclusions(config, &schedule, &state, lease, &decisionLines, &blockerSummary); err != nil {
+	if err := e.applyConclusions(config, &schedule, &state, lease, &decisionLines, &blockerSummary, &checkpointKinds); err != nil {
 		return TickResult{}, err
 	}
 	if schedule.WorkflowStatus != workflowStatusWaitingHuman && schedule.WorkflowStatus != workflowStatusFailed && schedule.WorkflowStatus != workflowStatusCompleted {
@@ -73,6 +75,7 @@ func (e *Engine) Tick() (TickResult, error) {
 			state.CurrentStageID = stage.StageID
 			state.CurrentRoleID = stage.RoleID
 			result.DispatchedCount++
+			checkpointKinds = append(checkpointKinds, fmt.Sprintf("stage-%s-dispatched", stage.StageID))
 			decisionLines = append(decisionLines, []string{
 				fmt.Sprintf("## decision: dispatch-%s", stage.LastTaskID),
 				fmt.Sprintf("- type: dispatch"),
@@ -131,6 +134,11 @@ func (e *Engine) Tick() (TickResult, error) {
 			if commitErr := e.bus.CommitOffset(lease, eventbus.OffsetCommit{ConsumerID: orchestratorConsumerID, LastEventID: tail.EventID, LastSequence: tail.Sequence, Note: "orchestrator tick applied"}); commitErr != nil {
 				return TickResult{}, commitErr
 			}
+		}
+	}
+	for _, kind := range checkpointKinds {
+		if _, err := recovery.RecordCheckpoint(e.sessionDir, recovery.CheckpointInput{Kind: kind, Source: "orchestrator"}); err != nil {
+			return TickResult{}, err
 		}
 	}
 	result.WorkflowStatus = schedule.WorkflowStatus
@@ -200,7 +208,7 @@ func unseenMessages(messages []HumanMessage, cursor string) []HumanMessage {
 	return filtered
 }
 
-func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule, state *sessionState, lease eventbus.Lease, decisionLines *[][]string, blockerSummary *string) error {
+func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule, state *sessionState, lease eventbus.Lease, decisionLines *[][]string, blockerSummary *string, checkpointKinds *[]string) error {
 	for index := range schedule.Stages {
 		stage := &schedule.Stages[index]
 		if stage.Status != stageStatusDispatched {
@@ -246,6 +254,7 @@ func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule
 					return err
 				}
 			}
+			*checkpointKinds = append(*checkpointKinds, fmt.Sprintf("stage-%s-completed", stage.StageID))
 		case conclusionNeedsRetry:
 			stage.Status = stageStatusRetryPending
 			stage.Attempt++
@@ -253,6 +262,7 @@ func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule
 			if err != nil {
 				return err
 			}
+			*checkpointKinds = append(*checkpointKinds, fmt.Sprintf("stage-%s-retry-pending", stage.StageID))
 		case conclusionBlocked:
 			stage.Status = stageStatusBlocked
 			*blockerSummary = conclusion.Summary
@@ -260,12 +270,14 @@ func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule
 			if err != nil {
 				return err
 			}
+			*checkpointKinds = append(*checkpointKinds, fmt.Sprintf("stage-%s-blocked", stage.StageID))
 		case conclusionFailed:
 			stage.Status = stageStatusFailed
 			_, err = e.bus.Append(lease, eventbus.AppendEvent{EventType: "WORKFLOW_FAILED", Producer: "orchestrator", SessionID: state.SessionID, RoleID: stage.RoleID, PayloadRef: stage.LastConclusionRef, Summary: conclusion.Summary})
 			if err != nil {
 				return err
 			}
+			*checkpointKinds = append(*checkpointKinds, fmt.Sprintf("stage-%s-failed", stage.StageID))
 		default:
 			return ErrInvalidConclusion
 		}

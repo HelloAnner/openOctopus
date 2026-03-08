@@ -64,10 +64,16 @@ python3 -m pytest e2e/cli -v
 python3 -m pytest e2e/human-gate -v
 ```
 
+只跑 `recovery`：
+
+```bash
+python3 -m pytest e2e/recovery -v
+```
+
 全量 E2E：
 
 ```bash
-python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime e2e/artifact e2e/human-gate e2e/cli -v
+python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime e2e/artifact e2e/human-gate e2e/recovery e2e/cli -v
 ```
 
 或：
