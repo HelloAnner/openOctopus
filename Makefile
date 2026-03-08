@@ -6,6 +6,6 @@ test:
 	go test ./...
 
 e2e:
-	$(PYTHON) -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator -v
+	$(PYTHON) -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime -v
 
 check: test e2e

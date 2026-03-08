@@ -8,6 +8,7 @@ import (
 	"github.com/anner/openoctopus/internal/config/service"
 	"github.com/anner/openoctopus/internal/eventbus"
 	"github.com/anner/openoctopus/internal/orchestrator"
+	"github.com/anner/openoctopus/internal/roleruntime"
 	"github.com/anner/openoctopus/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -52,14 +53,21 @@ func newRunCommand() *cobra.Command {
 				_ = os.RemoveAll(createResult.SessionDir)
 				return err
 			}
-			engine := orchestrator.NewEngine(createResult.SessionDir)
-			if err := engine.Bootstrap(); err != nil {
+			master := orchestrator.NewEngine(createResult.SessionDir)
+			if err := master.Bootstrap(); err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
 				return err
 			}
-			if _, err := engine.Tick(); err != nil {
+			tick, err := master.Tick()
+			if err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
 				return err
+			}
+			if roleRuntimeLoopEnabled() {
+				if err := driveRoleRuntimeLoop(createResult.SessionDir, master, tick.WorkflowStatus); err != nil {
+					_ = os.RemoveAll(createResult.SessionDir)
+					return err
+				}
 			}
 			fmt.Fprintf(command.OutOrStdout(), "session created: %s\n", createResult.SessionDir)
 			return nil
@@ -72,6 +80,40 @@ func newRunCommand() *cobra.Command {
 	return command
 }
 
+func driveRoleRuntimeLoop(sessionDir string, master *orchestrator.Engine, workflowStatus string) error {
+	if isTerminalWorkflow(workflowStatus) {
+		return nil
+	}
+	runtimeEngine := roleruntime.NewEngine(sessionDir)
+	for index := 0; index < 8; index++ {
+		roleTick, err := runtimeEngine.TickAll()
+		if err != nil {
+			return err
+		}
+		if !roleTick.Progressed {
+			return nil
+		}
+		next, err := master.Tick()
+		if err != nil {
+			return err
+		}
+		workflowStatus = next.WorkflowStatus
+		if isTerminalWorkflow(workflowStatus) {
+			return nil
+		}
+	}
+	return nil
+}
+
+func isTerminalWorkflow(status string) bool {
+	switch status {
+	case "COMPLETED", "FAILED", "WAITING_HUMAN":
+		return true
+	default:
+		return false
+	}
+}
+
 func buildFlagOverrides(workspaceRoot string, maxParallelRoles int) map[string]any {
 	overrides := make(map[string]any)
 	if workspaceRoot != "" {
@@ -81,4 +123,8 @@ func buildFlagOverrides(workspaceRoot string, maxParallelRoles int) map[string]a
 		overrides["runtime.scheduler.max_parallel_roles"] = maxParallelRoles
 	}
 	return overrides
+}
+
+func roleRuntimeLoopEnabled() bool {
+	return os.Getenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP") != "1"
 }

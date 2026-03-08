@@ -389,3 +389,168 @@ transitions:
 		t.Fatalf("expected role context to be dispatched, got %q", string(contextContent))
 	}
 }
+
+func TestRunCommandCompletesWorkflowWithDeterministicRoleRuntime(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "SUCCESS")
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "run-deterministic-success"
+  name: "Run Deterministic Success"
+
+llm_profiles:
+  deterministic_cli:
+    provider: "deterministic"
+    mode: "cli"
+    cli_path: "deterministic"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		t.Fatalf("read sessions dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+
+	turnsDir := filepath.Join(sessionDir, "roles", "agent_a", "turns")
+	if _, err := os.Stat(filepath.Join(turnsDir, "0001-input.md")); err != nil {
+		t.Fatalf("expected turn input file: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(turnsDir, "0001-output.md")); err != nil {
+		t.Fatalf("expected turn output file: %v", err)
+	}
+	conclusionContent, err := os.ReadFile(filepath.Join(sessionDir, "roles", "agent_a", "conclusion.md"))
+	if err != nil {
+		t.Fatalf("read conclusion: %v", err)
+	}
+	if !bytes.Contains(conclusionContent, []byte("- status: SUCCESS")) {
+		t.Fatalf("expected successful conclusion, got %q", string(conclusionContent))
+	}
+	stateContent, err := os.ReadFile(filepath.Join(sessionDir, "session.state.md"))
+	if err != nil {
+		t.Fatalf("read session state: %v", err)
+	}
+	if !bytes.Contains(stateContent, []byte("- status: COMPLETED")) {
+		t.Fatalf("expected completed session state, got %q", string(stateContent))
+	}
+}
+
+func TestRunCommandRetriesDeterministicRoleRuntime(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "NEEDS_RETRY,SUCCESS")
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "run-deterministic-retry"
+  name: "Run Deterministic Retry"
+
+llm_profiles:
+  deterministic_cli:
+    provider: "deterministic"
+    mode: "cli"
+    cli_path: "deterministic"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		t.Fatalf("read sessions dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+
+	for _, name := range []string{"0001-input.md", "0001-output.md", "0002-input.md", "0002-output.md"} {
+		if _, err := os.Stat(filepath.Join(sessionDir, "roles", "agent_a", "turns", name)); err != nil {
+			t.Fatalf("expected retry turn file %s: %v", name, err)
+		}
+	}
+	conclusionContent, err := os.ReadFile(filepath.Join(sessionDir, "roles", "agent_a", "conclusion.md"))
+	if err != nil {
+		t.Fatalf("read conclusion: %v", err)
+	}
+	if !bytes.Contains(conclusionContent, []byte("- status: SUCCESS")) {
+		t.Fatalf("expected successful conclusion after retry, got %q", string(conclusionContent))
+	}
+}

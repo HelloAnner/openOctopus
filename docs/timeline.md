@@ -5,6 +5,10 @@
     - `prd-001.md`
       - 做什么：定义 OpenOctopus 首版产品定位、Go 技术路线，以及“主 Agent 唯一人机入口、子 Agent 基于 Markdown 被动触发”的协作总线。
       - 核心改进点/修改差异：建立了主 Agent 写入 `human_messages.md`、子 Agent 重读 `context.md/inbox.md`、打断与手动输入统一事件化落盘的首版基线，替换原先更偏直接会话驱动的模糊协作方式。
+  - `plans/`
+    - `2026-03-08-role-runtime-001-implementation.md`
+      - 做什么：拆解 role-runtime 001 的实现顺序、测试入口、代码落位和最终验证步骤。
+      - 核心改进点/修改差异：在完成 role-runtime 001 PRD 与 E2E 设计后，进一步补上一份可直接执行的实现计划，把抽象设计收敛为可按 TDD 推进的落地任务。
   - `cli/`
     - `prd.md`
       - 做什么：规划 CLI 生命周期命令、状态查看、调试与报告输出文档。
@@ -82,6 +86,11 @@
     - `prd.md`
       - 做什么：规划角色执行器、回合文件协议、结论回传与状态同步文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - 做什么：定义 role-runtime 首版的被动任务消费、单回合执行、状态/心跳/turn/conclusion/outbox 文件协议，以及真实 Codex + deterministic executor 的黑盒验证方案。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD 与 E2E，使 role-runtime 从“只有职责说明”进入“可围绕 orchestrator 的 context/inbox 协议实施与验证”的首版落地阶段。
   - `artifact/`
     - `prd.md`
       - 做什么：规划产物索引、版本管理、差异对比与血缘追踪文档。

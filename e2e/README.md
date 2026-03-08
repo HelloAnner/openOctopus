@@ -11,7 +11,8 @@
 3. 使用 `go build` 构建当前仓库的 `openoctopus` 二进制。
 4. 对 `eventbus` 额外构建一个测试专用 `eventbus-harness` 二进制。
 5. 对 `orchestrator` 额外构建一个测试专用 `orchestrator-harness` 二进制。
-6. 用 `pytest` 黑盒调用 `validate` / `run` 命令和 harness 子命令。
+6. 对 `role-runtime` 额外构建一个测试专用 `role-runtime-harness` 二进制。
+7. 用 `pytest` 黑盒调用 `validate` / `run` 命令和 harness 子命令。
 
 ## 前置条件
 
@@ -45,10 +46,16 @@ python3 -m pytest e2e/eventbus -v
 python3 -m pytest e2e/orchestrator -v
 ```
 
+只跑 `role-runtime`：
+
+```bash
+python3 -m pytest e2e/role-runtime -v
+```
+
 全量 E2E：
 
 ```bash
-python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator -v
+python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime -v
 ```
 
 或：
