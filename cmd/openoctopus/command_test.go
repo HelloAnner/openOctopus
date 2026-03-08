@@ -67,7 +67,7 @@ transitions:
 }
 
 func TestRunCommandCreatesSessionSkeleton(t *testing.T) {
-	t.Parallel()
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
 
 	configPath := writeCommandConfig(t, `
 version: "2.1"
@@ -153,8 +153,82 @@ transitions:
 	}
 }
 
+func TestRunCommandBootstrapsArtifactStore(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-run-artifact"
+  name: "Valid Run Artifact"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	err := command.Execute()
+	if err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, readErr := os.ReadDir(sessionsDir)
+	if readErr != nil {
+		t.Fatalf("read sessions dir: %v", readErr)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+
+	indexFile, readErr := os.ReadFile(filepath.Join(sessionDir, "artifacts", "index.md"))
+	if readErr != nil {
+		t.Fatalf("read artifact index: %v", readErr)
+	}
+	if bytes.Contains(indexFile, []byte("Initialized by session 001.")) || !bytes.Contains(indexFile, []byte("# Artifact Index")) {
+		t.Fatalf("expected bootstrapped artifact index, got %q", string(indexFile))
+	}
+}
+
 func TestRunCommandBootstrapsEventBus(t *testing.T) {
-	t.Parallel()
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
 
 	configPath := writeCommandConfig(t, `
 version: "2.1"
@@ -236,7 +310,7 @@ transitions:
 }
 
 func TestRunCommandDoesNotCreateSessionForInvalidConfig(t *testing.T) {
-	t.Parallel()
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
 
 	workingDir := t.TempDir()
 	configPath := filepath.Join(workingDir, "octopus.yaml")
@@ -310,7 +384,7 @@ func writeCommandConfig(t *testing.T, content string) string {
 }
 
 func TestRunCommandBootstrapsOrchestrator(t *testing.T) {
-	t.Parallel()
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
 
 	configPath := writeCommandConfig(t, `
 version: "2.1"

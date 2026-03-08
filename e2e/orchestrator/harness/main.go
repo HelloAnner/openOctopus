@@ -89,8 +89,21 @@ func runWriteConclusion(args []string) error {
 	if err := os.MkdirAll(roleDir, 0o755); err != nil {
 		return err
 	}
-	content := fmt.Sprintf("# Role Conclusion\n\n- role_id: %s\n- stage_id: %s\n- task_id: %s\n- status: %s\n- summary: %s\n- output_refs: \n- updated_at: %s\n", *roleID, *stageID, *taskID, *status, *summary, time.Now().UTC().Format(time.RFC3339))
-	return os.WriteFile(filepath.Join(roleDir, "conclusion.md"), []byte(content), 0o644)
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	content := fmt.Sprintf("# Role Conclusion\n\n- role_id: %s\n- stage_id: %s\n- task_id: %s\n- status: %s\n- summary: %s\n- output_refs: \n- updated_at: %s\n", *roleID, *stageID, *taskID, *status, *summary, timestamp)
+	if err := os.WriteFile(filepath.Join(roleDir, "conclusion.md"), []byte(content), 0o644); err != nil {
+		return err
+	}
+	turnsDir := filepath.Join(roleDir, "turns")
+	if err := os.MkdirAll(turnsDir, 0o755); err != nil {
+		return err
+	}
+	turnOutput := "# Role Turn Output\n\n- turn_seq: 1\n- executor_provider: harness\n- command: harness\n- exit_code: 0\n- duration_ms: 0\n\n## stdout\n\n## stderr\n\n## role_result\n- status: " + *status + "\n- summary: " + *summary + "\n- output_refs: \n"
+	if err := os.WriteFile(filepath.Join(turnsDir, "0001-output.md"), []byte(turnOutput), 0o644); err != nil {
+		return err
+	}
+	outbox := fmt.Sprintf("# Role Outbox\n\n- outbox_version: 1\n- role_id: %s\n- stage_id: %s\n- task_id: %s\n- turn_seq: 1\n- status: %s\n- conclusion_ref: roles/%s/conclusion.md\n- turn_output_ref: roles/%s/turns/0001-output.md\n- updated_at: %s\n", *roleID, *stageID, *taskID, *status, *roleID, *roleID, timestamp)
+	return os.WriteFile(filepath.Join(roleDir, "outbox.md"), []byte(outbox), 0o644)
 }
 
 func nextMessageID(content string) string {

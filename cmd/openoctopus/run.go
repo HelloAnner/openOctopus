@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/anner/openoctopus/internal/artifact"
 	"github.com/anner/openoctopus/internal/config/service"
 	"github.com/anner/openoctopus/internal/eventbus"
 	"github.com/anner/openoctopus/internal/orchestrator"
@@ -50,6 +51,11 @@ func newRunCommand() *cobra.Command {
 				MetadataRef: "metadata.md",
 			})
 			if err != nil {
+				_ = os.RemoveAll(createResult.SessionDir)
+				return err
+			}
+			artifactStore := artifact.NewStore(createResult.SessionDir)
+			if err := artifactStore.Bootstrap(); err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
 				return err
 			}

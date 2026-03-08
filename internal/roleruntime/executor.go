@@ -15,6 +15,9 @@ func resolveExecutor(profile model.LLMProfile) (executor, error) {
 	if provider == "deterministic" {
 		return deterministicExecutor{}, nil
 	}
+	if provider == "codex" && strings.TrimSpace(strings.ToLower(profile.Mode)) == "cli" {
+		return codexExecutor{}, nil
+	}
 	return nil, fmt.Errorf("%w: %s", ErrUnsupportedExecutor, profile.Provider)
 }
 

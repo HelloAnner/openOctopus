@@ -166,6 +166,7 @@ def run_cli(binary_path: Path, real_codex_env: Path):
     def _run(args, cwd: Path, env: Optional[dict] = None):
         runtime_env = os.environ.copy()
         runtime_env["CODEX_HOME"] = str(real_codex_env)
+        runtime_env.setdefault("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
         if env:
             runtime_env.update(env)
         return subprocess.run(

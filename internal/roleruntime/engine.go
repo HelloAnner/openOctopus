@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/anner/openoctopus/internal/config/model"
@@ -142,8 +143,52 @@ func (e *Engine) TickRole(roleID string) (RoleTickResult, error) {
 }
 
 func buildExecuteRequest(sessionDir string, config model.RuntimeConfig, role model.RoleConfig, profile model.LLMProfile, context roleContext, inbox roleInbox, turnSeq int) ExecuteRequest {
-	prompt := fmt.Sprintf("You are role %s. Read the task package and return a markdown block named role_result.\nRequirement snapshot: %s\nTask: %s\nStage: %s", role.ID, filepath.ToSlash(filepath.Join("planner", "requirement.snapshot.md")), inbox.TaskID, inbox.StageID)
+	paths := []string{
+		filepath.ToSlash(filepath.Join("planner", "requirement.snapshot.md")),
+		filepath.ToSlash(filepath.Join("roles", role.ID, "context.md")),
+		filepath.ToSlash(filepath.Join("roles", role.ID, "inbox.md")),
+	}
+	lines := []string{
+		fmt.Sprintf("You are role %s.", role.ID),
+		"Work only inside the current session directory.",
+		"Do not browse the web, do not inspect unrelated files, and do not delete or rename any existing path.",
+		"Read only these files before doing anything:",
+	}
+	for _, path := range paths {
+		lines = append(lines, "- "+path)
+	}
+	for _, ref := range suggestedOutputRefs(config, inbox.StageID) {
+		lines = append(lines, "- suggested artifact output: "+ref)
+	}
+	lines = append(lines,
+		"If a suggested artifact output is listed, create or update only that path.",
+		"After writing the artifact, return only one markdown block and no extra prose:",
+		"## role_result",
+		"- status: SUCCESS | NEEDS_RETRY | BLOCKED | FAILED",
+		"- summary: short summary",
+		"- output_refs: comma-separated refs or blank",
+		fmt.Sprintf("Task: %s", inbox.TaskID),
+		fmt.Sprintf("Stage: %s", inbox.StageID),
+	)
+	prompt := strings.Join(lines, "\n")
 	return ExecuteRequest{SessionDir: sessionDir, Role: role, Profile: profile, Context: context, Inbox: inbox, TurnSeq: turnSeq, Prompt: prompt}
+}
+
+
+func suggestedOutputRefs(config model.RuntimeConfig, stageID string) []string {
+	refs := make([]string, 0)
+	for _, stage := range config.Stages {
+		if stage.ID != stageID {
+			continue
+		}
+		for _, output := range stage.Output {
+			if output.Type != "artifact" || strings.TrimSpace(output.Name) == "" {
+				continue
+			}
+			refs = append(refs, filepath.ToSlash(filepath.Join("artifacts", "_staging", stageID, output.Name+".md")))
+		}
+	}
+	return refs
 }
 
 func buildRunningState(state roleState, provider string, context roleContext, inbox roleInbox, turnSeq int) roleState {

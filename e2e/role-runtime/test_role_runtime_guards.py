@@ -55,7 +55,7 @@ def test_interrupt_before_role_tick(prepare_module_case, run_cli, run_harness, r
     tick = run_role_runtime_harness(
         ["tick-role", "--session-dir", str(session_dir), "--role-id", "agent_a"],
         cwd=case_dir,
-        env={"OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A": "SUCCESS"},
+        env={"OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP": "0", "OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A": "SUCCESS"},
     )
     assert tick.returncode == 0, tick.stderr
     assert "status: INTERRUPTED" in (session_dir / "roles" / "agent_a" / "state.md").read_text()
@@ -67,7 +67,7 @@ def test_reset_increments_generation_and_keeps_turns(prepare_module_case, run_cl
     result = run_cli(
         ["run", "--config", str(case_dir / "octopus.yaml")],
         cwd=case_dir,
-        env={"OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A": "SUCCESS"},
+        env={"OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP": "0", "OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A": "SUCCESS"},
     )
 
     assert result.returncode == 0, result.stderr

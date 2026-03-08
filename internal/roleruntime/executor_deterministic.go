@@ -13,11 +13,15 @@ func (deterministicExecutor) Execute(request ExecuteRequest) (ExecuteResult, err
 	start := time.Now()
 	status := deterministicStatus(request.Role.ID, request.TurnSeq)
 	summary := fmt.Sprintf("deterministic result %s", status)
+	outputRefs := deterministicOutputRefs(request.Role.ID)
+	if status != "SUCCESS" {
+		outputRefs = ""
+	}
 	raw := strings.Join([]string{
 		"## role_result",
 		fmt.Sprintf("- status: %s", status),
 		fmt.Sprintf("- summary: %s", summary),
-		"- output_refs: ",
+		fmt.Sprintf("- output_refs: %s", outputRefs),
 	}, "\n")
 	result := ExecuteResult{
 		Provider:   "deterministic",
@@ -54,4 +58,18 @@ func deterministicStatus(roleID string, turnSeq int) string {
 		return strings.TrimSpace(parts[index])
 	}
 	return "SUCCESS"
+}
+
+func deterministicOutputRefs(roleID string) string {
+	keys := []string{
+		"OPENOCTOPUS_DETERMINISTIC_OUTPUT_REFS_" + sanitizeRoleEnvKey(roleID),
+		"OPENOCTOPUS_DETERMINISTIC_OUTPUT_REFS",
+	}
+	for _, key := range keys {
+		value := strings.TrimSpace(os.Getenv(key))
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }

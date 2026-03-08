@@ -57,7 +57,7 @@ func (e *Engine) Tick() (TickResult, error) {
 	}
 	decisionLines := make([][]string, 0)
 	blockerSummary := "clear"
-	if err := e.applyConclusions(&schedule, &state, lease, &decisionLines, &blockerSummary); err != nil {
+	if err := e.applyConclusions(config, &schedule, &state, lease, &decisionLines, &blockerSummary); err != nil {
 		return TickResult{}, err
 	}
 	if schedule.WorkflowStatus != workflowStatusWaitingHuman && schedule.WorkflowStatus != workflowStatusFailed && schedule.WorkflowStatus != workflowStatusCompleted {
@@ -200,7 +200,7 @@ func unseenMessages(messages []HumanMessage, cursor string) []HumanMessage {
 	return filtered
 }
 
-func (e *Engine) applyConclusions(schedule *Schedule, state *sessionState, lease eventbus.Lease, decisionLines *[][]string, blockerSummary *string) error {
+func (e *Engine) applyConclusions(config model.RuntimeConfig, schedule *Schedule, state *sessionState, lease eventbus.Lease, decisionLines *[][]string, blockerSummary *string) error {
 	for index := range schedule.Stages {
 		stage := &schedule.Stages[index]
 		if stage.Status != stageStatusDispatched {
@@ -221,6 +221,13 @@ func (e *Engine) applyConclusions(schedule *Schedule, state *sessionState, lease
 		stage.UpdatedAt = utcNow()
 		switch conclusion.Status {
 		case conclusionSuccess:
+			stageConfig, found := findStageConfig(config, stage.StageID)
+			if !found {
+				return ErrDispatchConflict
+			}
+			if err := e.publishArtifacts(stageConfig, *stage, conclusion, lease); err != nil {
+				return err
+			}
 			stage.Status = stageStatusCompleted
 			_, err = e.bus.Append(lease, eventbus.AppendEvent{EventType: "STAGE_COMPLETED", Producer: "orchestrator", SessionID: state.SessionID, RoleID: stage.RoleID, PayloadRef: stage.LastConclusionRef, Summary: conclusion.Summary})
 			if err != nil {

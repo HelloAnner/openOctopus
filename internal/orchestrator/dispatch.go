@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	artifactstore "github.com/anner/openoctopus/internal/artifact"
 	"github.com/anner/openoctopus/internal/config/model"
 	"github.com/anner/openoctopus/internal/eventbus"
 )
@@ -40,6 +41,10 @@ func (e *Engine) dispatchStage(config model.RuntimeConfig, schedule *Schedule, s
 	if roleConfig.ID == "" {
 		return ErrDispatchConflict
 	}
+	stageConfig, found := findStageConfig(config, stage.StageID)
+	if !found {
+		return ErrDispatchConflict
+	}
 	attempt := stage.Attempt
 	if attempt == 0 {
 		attempt = 1
@@ -53,7 +58,12 @@ func (e *Engine) dispatchStage(config model.RuntimeConfig, schedule *Schedule, s
 	inboxPath := filepath.Join(roleDir, "inbox.md")
 	contextVersion := stage.Attempt + 1
 	inboxVersion := stage.Attempt + 1
-	context := renderContext(*stage, taskID, contextVersion, roleConfig)
+	artifactInputs, err := buildArtifactInputs(e.sessionDir, stageConfig)
+	if err != nil {
+		return err
+	}
+	artifactOutputs := buildArtifactOutputs(stageConfig)
+	context := renderContext(*stage, taskID, contextVersion, roleConfig, stageConfig, artifactInputs, artifactOutputs)
 	inboxEvent, err := e.bus.Append(lease, eventbus.AppendEvent{
 		EventType:  "TASK_DISPATCHED",
 		Producer:   "orchestrator",
@@ -81,7 +91,7 @@ func (e *Engine) dispatchStage(config model.RuntimeConfig, schedule *Schedule, s
 	return nil
 }
 
-func renderContext(stage StageSchedule, taskID string, contextVersion int, roleConfig model.RoleConfig) string {
+func renderContext(stage StageSchedule, taskID string, contextVersion int, roleConfig model.RoleConfig, stageConfig model.StageConfig, artifactInputs []artifactInputBinding, artifactOutputs []artifactOutputBinding) string {
 	lines := []string{
 		"# Role Context",
 		"",
@@ -99,6 +109,41 @@ func renderContext(stage StageSchedule, taskID string, contextVersion int, roleC
 		"",
 		"## system_prompt",
 		roleConfig.SystemPrompt,
+	}
+	if len(stageConfig.Input) != 0 {
+		lines = append(lines, "", "## input_refs")
+		for _, input := range stageConfig.Input {
+			if input.Type == "artifact" {
+				continue
+			}
+			if input.Path != "" {
+				lines = append(lines,
+					fmt.Sprintf("- type: %s", input.Type),
+					fmt.Sprintf("- path: %s", input.Path),
+				)
+			}
+		}
+	}
+	if len(artifactInputs) != 0 {
+		lines = append(lines, "", "## input_artifacts")
+		for _, item := range artifactInputs {
+			lines = append(lines,
+				fmt.Sprintf("- ref: %s", item.Ref),
+				fmt.Sprintf("- resolved_version: %d", item.Version),
+				fmt.Sprintf("- content_ref: %s", item.ContentRef),
+				fmt.Sprintf("- manifest_ref: %s", item.ManifestRef),
+			)
+		}
+	}
+	if len(artifactOutputs) != 0 {
+		lines = append(lines, "", "## output_artifacts")
+		for _, item := range artifactOutputs {
+			lines = append(lines,
+				fmt.Sprintf("- name: %s", item.Name),
+				fmt.Sprintf("- suggested_ref: %s", item.SuggestedRef),
+				"- publish_rule: write artifact and return ref in role_result output_refs",
+			)
+		}
 	}
 	return strings.Join(lines, "\n") + "\n"
 }
@@ -137,4 +182,35 @@ func readStateSessionIDOrEmpty(path string) string {
 		return ""
 	}
 	return state.SessionID
+}
+
+func buildArtifactInputs(sessionDir string, stage model.StageConfig) ([]artifactInputBinding, error) {
+	store := artifactstore.NewStore(sessionDir)
+	bindings := make([]artifactInputBinding, 0)
+	for _, input := range stage.Input {
+		if input.Type != "artifact" || strings.TrimSpace(input.Ref) == "" {
+			continue
+		}
+		resolved, err := store.ResolveLatest(input.Ref)
+		if err != nil {
+			return nil, err
+		}
+		bindings = append(bindings, artifactInputBinding{Ref: input.Ref, Version: resolved.Version, ContentRef: resolved.ContentRef, ManifestRef: resolved.ManifestRef})
+	}
+	return bindings, nil
+}
+
+func buildArtifactOutputs(stage model.StageConfig) []artifactOutputBinding {
+	bindings := make([]artifactOutputBinding, 0)
+	for _, output := range stage.Output {
+		if output.Type != "artifact" || strings.TrimSpace(output.Name) == "" {
+			continue
+		}
+		bindings = append(bindings, artifactOutputBinding{Name: output.Name, SuggestedRef: suggestedArtifactRef(stage.ID, output.Name)})
+	}
+	return bindings
+}
+
+func suggestedArtifactRef(stageID string, artifactName string) string {
+	return filepath.ToSlash(filepath.Join("artifacts", "_staging", stageID, artifactName+".md"))
 }

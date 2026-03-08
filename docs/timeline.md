@@ -95,6 +95,19 @@
     - `prd.md`
       - 做什么：规划产物索引、版本管理、差异对比与血缘追踪文档。
       - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-bootstrap-and-index-layout.md`
+        - `02-publish-version-and-manifest.md`
+        - `03-input-resolution-and-context-projection.md`
+        - `04-lineage-and-bus-events.md`
+        - `05-runtime-and-run-integration.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 artifact 首版的 session 内 staging、版本快照、索引、diff 摘要、血缘追踪、输入解析与真实 Codex 简单产物闭环。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 与 plans，把 artifact 从“只有职责说明”推进到“可与 orchestrator / role-runtime 协同工作的正式版本化产物协议”。
   - `tmux/`
     - `prd.md`
       - 做什么：规划 TMUX 布局、pane 管理、角色切换和运行可视化文档。
