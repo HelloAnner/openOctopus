@@ -61,6 +61,18 @@ transitions:
 	if result.Config.Runtime.Workspace.Root != ".octopus" {
 		t.Fatalf("expected default workspace root .octopus, got %q", result.Config.Runtime.Workspace.Root)
 	}
+	if result.Config.Runtime.Tmux.Enabled {
+		t.Fatal("expected tmux to be disabled by default")
+	}
+	if result.Config.Runtime.Tmux.SocketName != "octopus-{session_id}" {
+		t.Fatalf("expected default tmux socket name, got %q", result.Config.Runtime.Tmux.SocketName)
+	}
+	if result.Config.Runtime.Tmux.MainPaneRatio != 0.5 {
+		t.Fatalf("expected default main pane ratio 0.5, got %v", result.Config.Runtime.Tmux.MainPaneRatio)
+	}
+	if result.Config.Runtime.Tmux.RoleLayout != "adaptive_grid" {
+		t.Fatalf("expected default tmux role layout adaptive_grid, got %q", result.Config.Runtime.Tmux.RoleLayout)
+	}
 	if len(result.AppliedDefaults) == 0 {
 		t.Fatal("expected applied defaults to be recorded")
 	}

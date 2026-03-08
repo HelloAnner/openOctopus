@@ -30,6 +30,7 @@ go build -o openoctopus ./cmd/openoctopus
 ./openoctopus interrupt --session <session_id> --role <role_id> --reason "..."
 ./openoctopus interrupt-all --session <session_id> --reason "..."
 ./openoctopus inject --session <session_id> --input ./note.md
+./openoctopus switch --session <session_id> --role <role_id>
 
 # 恢复执行
 ./openoctopus resume --session <session_id>
@@ -71,6 +72,8 @@ go build -o openoctopus ./cmd/openoctopus
 │   │
 │   ├── humangate/         # 人工介入机制
 │   │
+│   ├── tmux/              # TMUX 会话编排与 pane 切换
+│   │
 │   └── cli/               # CLI 输出格式化
 │
 ├── docs/                  # 产品与模块设计文档
@@ -82,6 +85,7 @@ go build -o openoctopus ./cmd/openoctopus
 │   ├── role-runtime/     # 角色运行时设计
 │   ├── artifact/         # 产物管理设计
 │   ├── human-gate/       # 人工介入设计
+│   ├── tmux/             # TMUX 设计
 │   ├── cli/              # CLI 设计
 │   └── timeline.md       # 版本演进时间线
 │

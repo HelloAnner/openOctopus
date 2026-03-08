@@ -3,8 +3,16 @@ package model
 type RuntimeSection struct {
 	Workspace   WorkspaceConfig   `koanf:"workspace" yaml:"workspace"`
 	Scheduler   SchedulerConfig   `koanf:"scheduler" yaml:"scheduler"`
+	Tmux        TmuxConfig        `koanf:"tmux" yaml:"tmux"`
 	RoleRuntime RoleRuntimeConfig `koanf:"role_runtime" yaml:"role_runtime"`
 	MasterWatch MasterWatchConfig `koanf:"master_watch" yaml:"master_watch"`
+}
+
+type TmuxConfig struct {
+	Enabled       bool    `koanf:"enabled" yaml:"enabled"`
+	SocketName    string  `koanf:"socket_name" yaml:"socket_name"`
+	MainPaneRatio float64 `koanf:"main_pane_ratio" yaml:"main_pane_ratio"`
+	RoleLayout    string  `koanf:"role_layout" yaml:"role_layout"`
 }
 
 type WorkspaceConfig struct {

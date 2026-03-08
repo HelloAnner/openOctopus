@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/anner/openoctopus/internal/tmux"
 )
 
 func TestValidateCommandFailsForInvalidConfig(t *testing.T) {
@@ -705,6 +707,189 @@ func TestRunCommandWritesJSONSuccess(t *testing.T) {
 	}
 }
 
+func TestRunCommandBootstrapsTmuxLayout(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-run-tmux"
+  name: "Valid Run Tmux"
+
+runtime:
+  tmux:
+    enabled: true
+    socket_name: "octopus-{session_id}"
+    main_pane_ratio: 0.5
+    role_layout: "adaptive_grid"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+  - id: "agent_b"
+    name: "Agent B"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+  - id: "stage_b"
+    name: "Stage B"
+    role: "agent_b"
+    output:
+      - type: "artifact"
+        name: "artifact_b"
+
+transitions:
+  - from: "stage_a"
+    to: "stage_b"
+  - from: "stage_b"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionDir := mustFindSingleSessionDir(t, configPath)
+	if _, err := os.Stat(filepath.Join(sessionDir, "state", "tmux", "layout.md")); err != nil {
+		t.Fatalf("expected tmux layout to exist: %v", err)
+	}
+	layout, err := tmux.ReadLayout(sessionDir)
+	if err != nil {
+		t.Fatalf("ReadLayout returned error: %v", err)
+	}
+	cleanupTmuxSession(t, layout.SocketName, layout.SessionName)
+	if layout.RolePanes["agent_a"].PaneID == "" {
+		t.Fatal("expected agent_a pane binding")
+	}
+	if layout.RolePanes["agent_b"].PaneID == "" {
+		t.Fatal("expected agent_b pane binding")
+	}
+}
+
+func TestSwitchCommandWritesJSONTarget(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-switch-tmux"
+  name: "Valid Switch Tmux"
+
+runtime:
+  tmux:
+    enabled: true
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	runStdout := &bytes.Buffer{}
+	runStderr := &bytes.Buffer{}
+	runCommand := NewRootCommand()
+	runCommand.SetOut(runStdout)
+	runCommand.SetErr(runStderr)
+	runCommand.SetArgs([]string{"run", "--config", configPath})
+	if err := runCommand.Execute(); err != nil {
+		t.Fatalf("expected run to succeed: %v, stderr=%q", err, runStderr.String())
+	}
+
+	sessionDir := mustFindSingleSessionDir(t, configPath)
+	layout, err := tmux.ReadLayout(sessionDir)
+	if err != nil {
+		t.Fatalf("ReadLayout returned error: %v", err)
+	}
+	defer cleanupTmuxSession(t, layout.SocketName, layout.SessionName)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"switch", "--session", sessionDir, "--role", "agent_a", "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected switch to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
+		t.Fatalf("unmarshal switch payload: %v", err)
+	}
+	data := payload["data"].(map[string]any)
+	if data["target_role"] != "agent_a" {
+		t.Fatalf("expected target role agent_a, got %#v", data["target_role"])
+	}
+	if data["target_pane_id"] == "" {
+		t.Fatal("expected target pane id")
+	}
+	if data["switched"] != false {
+		t.Fatalf("expected switched false outside tmux client, got %#v", data["switched"])
+	}
+}
+
 func TestStatusCommandWritesJSONSummary(t *testing.T) {
 	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "SUCCESS")
 	configPath := writeCommandConfig(t, validDeterministicCommandConfig("json-status-success", "JSON Status Success"))
@@ -989,4 +1174,25 @@ transitions:
   - from: "stage_a"
     to: "__END__"
 `
+}
+
+func mustFindSingleSessionDir(t *testing.T, configPath string) string {
+	t.Helper()
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		t.Fatalf("read sessions dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	return filepath.Join(sessionsDir, entries[0].Name())
+}
+
+func cleanupTmuxSession(t *testing.T, socketName string, sessionName string) {
+	t.Helper()
+	service := tmux.NewService("")
+	if err := service.KillSession(socketName, sessionName); err != nil {
+		t.Fatalf("kill tmux session: %v", err)
+	}
 }

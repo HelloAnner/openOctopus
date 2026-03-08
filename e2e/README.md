@@ -2,7 +2,7 @@
 
 ## 运行方式
 
-本仓库当前的 `config`、`session`、`eventbus`、`orchestrator`、`role-runtime`、`artifact`、`human-gate`、`cli` 模块真实 E2E 默认直接在宿主机运行，不使用 Docker。
+本仓库当前的 `config`、`session`、`eventbus`、`orchestrator`、`role-runtime`、`artifact`、`human-gate`、`cli`、`tmux` 模块真实 E2E 默认直接在宿主机运行，不使用 Docker。
 
 测试会：
 
@@ -58,6 +58,12 @@ python3 -m pytest e2e/role-runtime -v
 python3 -m pytest e2e/cli -v
 ```
 
+只跑 `tmux`：
+
+```bash
+python3 -m pytest e2e/tmux -v
+```
+
 只跑 `human-gate`：
 
 ```bash
@@ -73,7 +79,7 @@ python3 -m pytest e2e/recovery -v
 全量 E2E：
 
 ```bash
-python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime e2e/artifact e2e/human-gate e2e/recovery e2e/cli -v
+python3 -m pytest e2e/config e2e/session e2e/eventbus e2e/orchestrator e2e/role-runtime e2e/artifact e2e/human-gate e2e/recovery e2e/cli e2e/tmux -v
 ```
 
 或：

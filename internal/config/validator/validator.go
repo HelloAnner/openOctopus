@@ -51,8 +51,31 @@ func validateRoot(config model.RuntimeConfig, errors *[]configerrors.ConfigError
 	if config.Runtime.Scheduler.MaxParallelRoles == 0 && hasFieldConfigured(config.Runtime.Scheduler) {
 		appendError(errors, "CFG-POLICY-002", configerrors.CategoryPolicy, "runtime.scheduler.max_parallel_roles", "并发角色数必须大于 0", "设置为正整数，例如 1 或 2。", "RUNTIME-013")
 	}
+	validateTmux(config.Runtime.Tmux, errors)
 	for profileID, profile := range config.LLMProfiles {
 		validateLLMProfile(profileID, profile, errors)
+	}
+}
+
+func validateTmux(config model.TmuxConfig, errors *[]configerrors.ConfigError) {
+	if config.Enabled && strings.TrimSpace(config.SocketName) == "" {
+		appendError(errors, "CFG-SCHEMA-010", configerrors.CategorySchema, "runtime.tmux.socket_name", "启用 tmux 时 socket_name 不能为空", "设置 tmux socket_name，支持 {session_id} 占位符。", "RUNTIME-007")
+	}
+	if config.MainPaneRatio <= 0 || config.MainPaneRatio >= 1 {
+		appendError(errors, "CFG-POLICY-003", configerrors.CategoryPolicy, "runtime.tmux.main_pane_ratio", "main_pane_ratio 必须位于 (0,1) 区间", "设置为 0 到 1 之间的小数，例如 0.5。", "RUNTIME-008")
+	}
+	if isSupportedRoleLayout(config.RoleLayout) {
+		return
+	}
+	appendError(errors, "CFG-SCHEMA-011", configerrors.CategorySchema, "runtime.tmux.role_layout", "role_layout 不受支持", "使用 adaptive_grid 或 tiled。", "RUNTIME-009")
+}
+
+func isSupportedRoleLayout(value string) bool {
+	switch value {
+	case "adaptive_grid", "tiled":
+		return true
+	default:
+		return false
 	}
 }
 
