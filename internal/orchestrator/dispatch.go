@@ -58,12 +58,16 @@ func (e *Engine) dispatchStage(config model.RuntimeConfig, schedule *Schedule, s
 	inboxPath := filepath.Join(roleDir, "inbox.md")
 	contextVersion := stage.Attempt + 1
 	inboxVersion := stage.Attempt + 1
+	materializedStageConfig, err := materializeStageInputs(e.sessionDir, e.paths.metadata, roleDir, stageConfig)
+	if err != nil {
+		return err
+	}
 	artifactInputs, err := buildArtifactInputs(e.sessionDir, stageConfig)
 	if err != nil {
 		return err
 	}
 	artifactOutputs := buildArtifactOutputs(stageConfig)
-	context := renderContext(*stage, taskID, contextVersion, roleConfig, stageConfig, artifactInputs, artifactOutputs)
+	context := renderContext(*stage, taskID, contextVersion, roleConfig, materializedStageConfig, artifactInputs, artifactOutputs)
 	inboxEvent, err := e.bus.Append(lease, eventbus.AppendEvent{
 		EventType:  "TASK_DISPATCHED",
 		Producer:   "orchestrator",

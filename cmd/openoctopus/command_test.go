@@ -1043,6 +1043,26 @@ func TestExecuteMapsExitCodes(t *testing.T) {
 	}
 }
 
+func TestExecuteTreatsYAMLPathAsRunAlias(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeCommandConfig(t, validDeterministicCommandConfig("execute-alias", "Execute Alias"))
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+
+	code := execute([]string{configPath, "--format", "json"}, stdout, stderr)
+	if code != 0 {
+		t.Fatalf("expected yaml alias to succeed, got code %d, stderr=%q", code, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["session_dir"] == "" {
+		t.Fatalf("expected session_dir in payload, got %#v", data["session_dir"])
+	}
+	if _, err := os.Stat(data["session_dir"].(string)); err != nil {
+		t.Fatalf("expected session_dir to exist: %v", err)
+	}
+}
+
 func TestRecoverCommandWritesJSONSummary(t *testing.T) {
 	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
 	configPath := writeCommandConfig(t, validDeterministicCommandConfig("json-recover-success", "JSON Recover Success"))

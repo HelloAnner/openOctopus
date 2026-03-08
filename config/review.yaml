@@ -8,6 +8,7 @@ runtime:
   tmux:
     enabled: true
     socket_name: "octopus-{session_id}"
+    main_llm_profile: "codex_cli"
     main_pane_ratio: 0.5
     role_layout: "adaptive_grid"
   scheduler:

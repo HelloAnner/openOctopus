@@ -9,10 +9,11 @@ type RuntimeSection struct {
 }
 
 type TmuxConfig struct {
-	Enabled       bool    `koanf:"enabled" yaml:"enabled"`
-	SocketName    string  `koanf:"socket_name" yaml:"socket_name"`
-	MainPaneRatio float64 `koanf:"main_pane_ratio" yaml:"main_pane_ratio"`
-	RoleLayout    string  `koanf:"role_layout" yaml:"role_layout"`
+	Enabled        bool    `koanf:"enabled" yaml:"enabled"`
+	SocketName     string  `koanf:"socket_name" yaml:"socket_name"`
+	MainLLMProfile string  `koanf:"main_llm_profile" yaml:"main_llm_profile"`
+	MainPaneRatio  float64 `koanf:"main_pane_ratio" yaml:"main_pane_ratio"`
+	RoleLayout     string  `koanf:"role_layout" yaml:"role_layout"`
 }
 
 type WorkspaceConfig struct {

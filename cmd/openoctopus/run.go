@@ -62,10 +62,18 @@ func executeValidatedRun(command *cobra.Command, configPath string, format strin
 		cleanupRunFailure(createResult.SessionDir, tmuxResult)
 		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 	}
-	if err := bootstrapRunDependencies(createResult, result.Config, tmuxResult); err != nil {
+	if err := bootstrapEventBus(createResult, result.Config); err != nil {
+		cleanupRunFailure(createResult.SessionDir, tmuxResult)
 		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 	}
-	return handleRunSuccess(command, format, result.Config, createResult, tmuxResult, defaultRunSuccessHooks())
+	if err := bootstrapArtifacts(createResult, tmuxResult); err != nil {
+		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
+	}
+	master, workflowStatus, err := bootstrapOrchestratorStart(createResult, tmuxResult)
+	if err != nil {
+		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
+	}
+	return completeRunExecution(command, format, result.Config, createResult, tmuxResult, master, workflowStatus, defaultRunSuccessHooks(), defaultRunLifecycleHooks())
 }
 
 func writeRunValidationFailure(command *cobra.Command, format string, items []configerrors.ConfigError) error {
@@ -82,17 +90,18 @@ func bootstrapTmuxIfNeeded(createResult session.CreateResult, config configmodel
 		return tmux.BootstrapResult{}, nil
 	}
 	service := tmux.NewService(createResult.SessionDir)
-	launchCommands := map[string]string{}
+	launchPlan := tmuxLaunchPlan{RoleCommands: map[string]string{}}
 	if interactive {
-		launchCommands = buildTmuxLaunchCommands(config, createResult.SessionDir)
+		launchPlan = buildTmuxLaunchPlan(config, createResult.SessionDir)
 	}
 	return service.Bootstrap(tmux.BootstrapOptions{
-		SessionID:      createResult.SessionID,
-		RoleIDs:        roleIDs(config.Roles),
-		SocketTemplate: config.Runtime.Tmux.SocketName,
-		MainPaneRatio:  config.Runtime.Tmux.MainPaneRatio,
-		RoleLayout:     config.Runtime.Tmux.RoleLayout,
-		LaunchCommands: launchCommands,
+		SessionID:         createResult.SessionID,
+		RoleIDs:           roleIDs(config.Roles),
+		SocketTemplate:    config.Runtime.Tmux.SocketName,
+		MainPaneRatio:     config.Runtime.Tmux.MainPaneRatio,
+		RoleLayout:        config.Runtime.Tmux.RoleLayout,
+		MainLaunchCommand: launchPlan.MainCommand,
+		LaunchCommands:    launchPlan.RoleCommands,
 	})
 }
 
@@ -102,17 +111,6 @@ func roleIDs(roles []configmodel.RoleConfig) []string {
 		values = append(values, role.ID)
 	}
 	return values
-}
-
-func bootstrapRunDependencies(createResult session.CreateResult, config configmodel.RuntimeConfig, tmuxResult tmux.BootstrapResult) error {
-	if err := bootstrapEventBus(createResult, config); err != nil {
-		cleanupRunFailure(createResult.SessionDir, tmuxResult)
-		return err
-	}
-	if err := bootstrapArtifacts(createResult, tmuxResult); err != nil {
-		return err
-	}
-	return bootstrapOrchestrator(createResult, tmuxResult)
 }
 
 func bootstrapEventBus(createResult session.CreateResult, config configmodel.RuntimeConfig) error {
@@ -128,25 +126,18 @@ func bootstrapArtifacts(createResult session.CreateResult, tmuxResult tmux.Boots
 	return nil
 }
 
-func bootstrapOrchestrator(createResult session.CreateResult, tmuxResult tmux.BootstrapResult) error {
+func bootstrapOrchestratorStart(createResult session.CreateResult, tmuxResult tmux.BootstrapResult) (*orchestrator.Engine, string, error) {
 	master := orchestrator.NewEngine(createResult.SessionDir)
 	if err := master.Bootstrap(); err != nil {
 		cleanupRunFailure(createResult.SessionDir, tmuxResult)
-		return err
+		return nil, "", err
 	}
 	tick, err := master.Tick()
 	if err != nil {
 		cleanupRunFailure(createResult.SessionDir, tmuxResult)
-		return err
+		return nil, "", err
 	}
-	if !roleRuntimeLoopEnabled() {
-		return nil
-	}
-	if err := driveRoleRuntimeLoop(createResult.SessionDir, master, tick.WorkflowStatus); err != nil {
-		cleanupRunFailure(createResult.SessionDir, tmuxResult)
-		return err
-	}
-	return nil
+	return master, tick.WorkflowStatus, nil
 }
 
 func cleanupRunFailure(sessionDir string, tmuxResult tmux.BootstrapResult) {

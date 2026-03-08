@@ -107,3 +107,4 @@ parts/
 sdist/
 var
 .pytest*
+openoctopus

@@ -14,7 +14,10 @@ build:
 	go build -o $(BIN_NAME) ./cmd/openoctopus
 
 install: build
-	cp $(BIN_NAME) $(INSTALL_PATH)/$(BIN_NAME)
+	mkdir -p $(INSTALL_PATH)
+	rm -f $(INSTALL_PATH)/.$(BIN_NAME).tmp
+	cp $(BIN_NAME) $(INSTALL_PATH)/.$(BIN_NAME).tmp
+	mv -f $(INSTALL_PATH)/.$(BIN_NAME).tmp $(INSTALL_PATH)/$(BIN_NAME)
 	rm $(BIN_NAME)
 
 check: test

@@ -14,24 +14,28 @@ type codexExecutor struct{}
 
 func (codexExecutor) Execute(request ExecuteRequest) (ExecuteResult, error) {
 	start := time.Now()
-	outputFile := filepath.Join(request.SessionDir, ".codex-last-message.txt")
+	sessionDir, err := filepath.Abs(request.SessionDir)
+	if err != nil {
+		return ExecuteResult{}, err
+	}
+	outputFile := filepath.Join(sessionDir, ".codex-last-message.txt")
 	_ = os.Remove(outputFile)
 	args := []string{
 		"exec",
 		"--full-auto",
 		"--skip-git-repo-check",
 		"--color", "never",
-		"-C", request.SessionDir,
+		"-C", sessionDir,
 		"-o", outputFile,
 		request.Prompt,
 	}
 	cmd := exec.Command(request.Profile.CLIPath, args...)
-	cmd.Dir = request.SessionDir
+	cmd.Dir = sessionDir
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-	err := cmd.Run()
+	err = cmd.Run()
 	exitCode := 0
 	if err != nil {
 		if exitErr, ok := err.(*exec.ExitError); ok {

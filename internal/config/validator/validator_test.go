@@ -40,6 +40,27 @@ func TestValidateLLMProfileTmuxCommandRequiresCLIMode(t *testing.T) {
 	assertHasValidationPath(t, errors, "llm_profiles.deterministic.tmux_command")
 }
 
+
+func TestValidateTmuxMainLLMProfileRequiresExistingProfile(t *testing.T) {
+	t.Parallel()
+
+	config := validTmuxConfig()
+	config.Runtime.Tmux.MainLLMProfile = "missing"
+
+	errors := Validate(config)
+	assertHasValidationPath(t, errors, "runtime.tmux.main_llm_profile")
+}
+
+func TestValidateTmuxMainLLMProfileRequiresInteractiveProfile(t *testing.T) {
+	t.Parallel()
+
+	config := validTmuxConfig()
+	config.Runtime.Tmux.MainLLMProfile = "deterministic"
+
+	errors := Validate(config)
+	assertHasValidationPath(t, errors, "runtime.tmux.main_llm_profile")
+}
+
 func TestValidateRepeatTransitionRequiresOnCompleteAndPositiveRounds(t *testing.T) {
 	t.Parallel()
 

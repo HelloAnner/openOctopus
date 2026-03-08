@@ -1,5 +1,5 @@
 /*
-Package main tmux_launch 负责构造 tmux role pane 的交互启动命令。
+Package main tmux_launch 负责构造 tmux agent pane 启动命令。
 Author: Anner
 Created on 2026/3/8
 */
@@ -13,20 +13,48 @@ import (
 	configmodel "github.com/anner/openoctopus/internal/config/model"
 )
 
-func buildTmuxLaunchCommands(config configmodel.RuntimeConfig, sessionDir string) map[string]string {
+type tmuxLaunchPlan struct {
+	MainCommand  string
+	RoleCommands map[string]string
+}
+
+func buildTmuxLaunchPlan(config configmodel.RuntimeConfig, sessionDir string) tmuxLaunchPlan {
 	normalizedSessionDir := normalizeTmuxSessionDir(sessionDir)
+	return tmuxLaunchPlan{
+		MainCommand:  buildMainTmuxLaunchCommand(config, normalizedSessionDir),
+		RoleCommands: buildRoleTmuxLaunchCommands(config, normalizedSessionDir),
+	}
+}
+
+func buildTmuxLaunchCommands(config configmodel.RuntimeConfig, sessionDir string) map[string]string {
+	return buildTmuxLaunchPlan(config, sessionDir).RoleCommands
+}
+
+func buildRoleTmuxLaunchCommands(config configmodel.RuntimeConfig, sessionDir string) map[string]string {
 	commands := make(map[string]string)
 	for _, role := range config.Roles {
 		profile, ok := config.LLMProfiles[role.LLMProfile]
 		if !ok {
 			continue
 		}
-		command := buildRoleLaunchCommand(normalizedSessionDir, role, profile)
+		command := buildInteractiveLaunchCommand(sessionDir, role.ID, buildRoleStartupPrompt(role), profile)
 		if command != "" {
 			commands[role.ID] = command
 		}
 	}
 	return commands
+}
+
+func buildMainTmuxLaunchCommand(config configmodel.RuntimeConfig, sessionDir string) string {
+	profileID := strings.TrimSpace(config.Runtime.Tmux.MainLLMProfile)
+	if profileID == "" {
+		return ""
+	}
+	profile, ok := config.LLMProfiles[profileID]
+	if !ok {
+		return ""
+	}
+	return buildInteractiveLaunchCommand(sessionDir, "main", buildMainStartupPrompt(config), profile)
 }
 
 func normalizeTmuxSessionDir(sessionDir string) string {
@@ -41,15 +69,15 @@ func normalizeTmuxSessionDir(sessionDir string) string {
 	return absolute
 }
 
-func buildRoleLaunchCommand(sessionDir string, role configmodel.RoleConfig, profile configmodel.LLMProfile) string {
+func buildInteractiveLaunchCommand(sessionDir string, targetID string, prompt string, profile configmodel.LLMProfile) string {
 	configured := strings.TrimSpace(profile.TmuxCommand)
 	if configured != "" {
-		return buildConfiguredLaunchCommand(sessionDir, role, profile, configured)
+		return buildConfiguredLaunchCommand(sessionDir, targetID, prompt, profile, configured)
 	}
 	if !supportsDefaultInteractivePane(profile) {
 		return ""
 	}
-	return buildCodexLaunchCommand(sessionDir, role, shellQuoteValue(profile.CLIPath))
+	return buildCodexLaunchCommand(sessionDir, targetID, prompt, shellQuoteValue(profile.CLIPath))
 }
 
 func supportsDefaultInteractivePane(profile configmodel.LLMProfile) bool {
@@ -58,15 +86,15 @@ func supportsDefaultInteractivePane(profile configmodel.LLMProfile) bool {
 	return provider == "codex" && mode == "cli" && strings.TrimSpace(profile.CLIPath) != ""
 }
 
-func buildConfiguredLaunchCommand(sessionDir string, role configmodel.RoleConfig, profile configmodel.LLMProfile, configured string) string {
+func buildConfiguredLaunchCommand(sessionDir string, targetID string, prompt string, profile configmodel.LLMProfile, configured string) string {
 	if usesTmuxCommandTemplate(configured) {
-		rendered := renderTmuxCommandTemplate(configured, sessionDir, role.ID, buildRoleStartupPrompt(role))
-		return wrapRoleLaunchCommand(role.ID, sessionDir, rendered)
+		rendered := renderTmuxCommandTemplate(configured, sessionDir, targetID, prompt)
+		return wrapRoleLaunchCommand(targetID, sessionDir, rendered)
 	}
 	if supportsDefaultInteractivePane(profile) {
-		return buildCodexLaunchCommand(sessionDir, role, configured)
+		return buildCodexLaunchCommand(sessionDir, targetID, prompt, configured)
 	}
-	return wrapRoleLaunchCommand(role.ID, sessionDir, configured)
+	return wrapRoleLaunchCommand(targetID, sessionDir, configured)
 }
 
 func usesTmuxCommandTemplate(command string) bool {
@@ -82,12 +110,11 @@ func renderTmuxCommandTemplate(template string, sessionDir string, roleID string
 	return replacer.Replace(template)
 }
 
-func buildCodexLaunchCommand(sessionDir string, role configmodel.RoleConfig, baseCommand string) string {
-	prompt := buildRoleStartupPrompt(role)
+func buildCodexLaunchCommand(sessionDir string, targetID string, prompt string, baseCommand string) string {
 	root := shellQuoteValue(sessionDir)
 	quotedPrompt := shellQuoteValue(prompt)
 	rendered := fmt.Sprintf("%s --skip-git-repo-check --no-alt-screen -C %s %s", strings.TrimSpace(baseCommand), root, quotedPrompt)
-	return wrapRoleLaunchCommand(role.ID, sessionDir, rendered)
+	return wrapRoleLaunchCommand(targetID, sessionDir, rendered)
 }
 
 func wrapRoleLaunchCommand(roleID string, sessionDir string, command string) string {
@@ -114,6 +141,30 @@ func buildRoleStartupPrompt(role configmodel.RoleConfig) string {
 	}
 	lines = append(lines,
 		"After reading, briefly summarize what you are ready to help with.",
+		"Wait for the human's next instruction in this interactive session.",
+		"Do not modify any files until the human explicitly asks you here.",
+	)
+	return strings.Join(lines, "\n")
+}
+
+func buildMainStartupPrompt(config configmodel.RuntimeConfig) string {
+	paths := []string{
+		filepath.ToSlash(filepath.Join("planner", "requirement.snapshot.md")),
+		filepath.ToSlash(filepath.Join("planner", "master_schedule.md")),
+		filepath.ToSlash(filepath.Join("planner", "task_board.md")),
+		filepath.ToSlash(filepath.Join("planner", "global_progress.md")),
+		filepath.ToSlash(filepath.Join("planner", "blockers.md")),
+	}
+	lines := []string{
+		fmt.Sprintf("You are the interactive main assistant for workflow %s.", config.Meta.WorkflowID),
+		"Work only inside the current session directory.",
+		"Read these files first:",
+	}
+	for _, path := range paths {
+		lines = append(lines, "- "+path)
+	}
+	lines = append(lines,
+		"Help the human inspect workflow status, role handoff, blockers, and artifacts.",
 		"Wait for the human's next instruction in this interactive session.",
 		"Do not modify any files until the human explicitly asks you here.",
 	)

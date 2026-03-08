@@ -108,12 +108,13 @@ func (s *Service) finalizeLayout(socketName string, sessionName string, mainPane
 	if err := s.runnerCommand(socketName, "resize-pane", "-t", mainPaneID, "-x", paneWidthPercent(options.MainPaneRatio)); err != nil {
 		return err
 	}
-	if err := s.decoratePane(socketName, mainPaneID, mainPaneTitle(), paneBanner(mainRoleID, options.SessionID)); err != nil {
+	mainCommand := paneStartupCommand(mainRoleID, options.SessionID, options.MainLaunchCommand)
+	if err := s.preparePane(socketName, mainPaneID, mainPaneTitle(), mainCommand, mainRoleID); err != nil {
 		return err
 	}
 	for _, roleID := range sortedBindingKeys(rolePanes) {
 		command := paneStartupCommand(roleID, options.SessionID, options.LaunchCommands[roleID])
-		if err := s.decoratePane(socketName, rolePanes[roleID].PaneID, paneTitle(roleID), command); err != nil {
+		if err := s.preparePane(socketName, rolePanes[roleID].PaneID, paneTitle(roleID), command, roleID); err != nil {
 			return err
 		}
 	}
@@ -124,11 +125,15 @@ func paneWidthPercent(ratio float64) string {
 	return fmt.Sprintf("%.0f%%", ratio*100)
 }
 
-func (s *Service) decoratePane(socketName string, paneID string, title string, command string) error {
+func (s *Service) preparePane(socketName string, paneID string, title string, command string, paneKey string) error {
 	if err := s.runnerCommand(socketName, "select-pane", "-t", paneID, "-T", title); err != nil {
 		return err
 	}
-	return s.runnerCommand(socketName, "send-keys", "-t", paneID, command, "C-m")
+	scriptPath, err := s.writePaneStartupScript(paneKey, command)
+	if err != nil {
+		return err
+	}
+	return s.runnerCommand(socketName, "respawn-pane", "-k", "-t", paneID, buildPaneScriptCommand(scriptPath))
 }
 
 func (s *Service) activateDefaultPane(socketName string, mainPaneID string, rolePanes map[string]PaneBinding, roleIDs []string) error {

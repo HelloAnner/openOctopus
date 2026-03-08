@@ -13,6 +13,27 @@ import (
 	configmodel "github.com/anner/openoctopus/internal/config/model"
 )
 
+
+func TestBuildTmuxLaunchPlanBuildsMainCodexCommand(t *testing.T) {
+	config := configmodel.RuntimeConfig{
+		Runtime: configmodel.RuntimeSection{Tmux: configmodel.TmuxConfig{MainLLMProfile: "codex_cli"}},
+		LLMProfiles: map[string]configmodel.LLMProfile{
+			"codex_cli": {Provider: "codex", Mode: "cli", CLIPath: "codex", TmuxCommand: "codex --dangerously-bypass-approvals-and-sandbox"},
+		},
+	}
+
+	plan := buildTmuxLaunchPlan(config, "/tmp/session")
+	command := plan.MainCommand
+	if command == "" {
+		t.Fatal("expected main codex launch command")
+	}
+	assertContainsCommandPart(t, command, "codex")
+	assertContainsCommandPart(t, command, "planner/requirement.snapshot.md")
+	assertContainsCommandPart(t, command, "planner/master_schedule.md")
+	assertContainsCommandPart(t, command, "planner/global_progress.md")
+	assertContainsCommandPart(t, command, "main interactive ready")
+}
+
 func TestBuildTmuxLaunchCommandsBuildsCodexInteractiveCommand(t *testing.T) {
 	config := configmodel.RuntimeConfig{
 		LLMProfiles: map[string]configmodel.LLMProfile{

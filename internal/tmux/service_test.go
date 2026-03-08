@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -79,11 +80,12 @@ func TestResolveTargetFailsForMissingRole(t *testing.T) {
 	}
 }
 
-func TestFinalizeLayoutUsesRoleLaunchCommandAndFocusesFirstRole(t *testing.T) {
+func TestFinalizeLayoutUsesPaneStartupScriptAndFocusesFirstRole(t *testing.T) {
 	t.Parallel()
 
 	runner := &recordingRunner{}
-	service := &Service{sessionDir: t.TempDir(), runner: runner}
+	sessionDir := t.TempDir()
+	service := &Service{sessionDir: sessionDir, runner: runner}
 	rolePanes := map[string]PaneBinding{
 		"agent_a": {RoleID: "agent_a", PaneID: "%1", Title: "role:agent_a"},
 		"agent_b": {RoleID: "agent_b", PaneID: "%2", Title: "role:agent_b"},
@@ -100,8 +102,27 @@ func TestFinalizeLayoutUsesRoleLaunchCommandAndFocusesFirstRole(t *testing.T) {
 	if err != nil {
 		t.Fatalf("finalizeLayout returned error: %v", err)
 	}
-	if !runner.Contains([]string{"send-keys", "-t", "%1", "printf 'boot' && codex 'agent_a'", "C-m"}) {
-		t.Fatalf("expected launch command in send-keys, got %#v", runner.calls)
+	if runner.ContainsCommand("send-keys") {
+		t.Fatalf("expected startup without send-keys, got %#v", runner.calls)
+	}
+	if !runner.ContainsCommand("respawn-pane") {
+		t.Fatalf("expected respawn-pane startup, got %#v", runner.calls)
+	}
+	scriptPath := filepath.Join(sessionDir, "state", "tmux", "scripts", "agent_a.sh")
+	content, readErr := os.ReadFile(scriptPath)
+	if readErr != nil {
+		t.Fatalf("read startup script: %v", readErr)
+	}
+	if string(content) == "" || !containsAll(
+		string(content),
+		"printf 'boot'",
+		"codex 'agent_a'",
+		"planner/requirement.snapshot.md",
+		"roles/agent_a/context.md",
+		"roles/agent_a/inbox.md",
+		"exec \"${SHELL:-/bin/zsh}\" -l",
+	) {
+		t.Fatalf("unexpected startup script content: %q", string(content))
 	}
 	last := runner.LastArgs()
 	expectedLast := []string{"select-pane", "-t", "%1"}
@@ -129,9 +150,27 @@ func (r *recordingRunner) Contains(expected []string) bool {
 	return false
 }
 
+func (r *recordingRunner) ContainsCommand(command string) bool {
+	for _, call := range r.calls {
+		if len(call) != 0 && call[0] == command {
+			return true
+		}
+	}
+	return false
+}
+
 func (r *recordingRunner) LastArgs() []string {
 	if len(r.calls) == 0 {
 		return nil
 	}
 	return r.calls[len(r.calls)-1]
+}
+
+func containsAll(value string, items ...string) bool {
+	for _, item := range items {
+		if !strings.Contains(value, item) {
+			return false
+		}
+	}
+	return true
 }
