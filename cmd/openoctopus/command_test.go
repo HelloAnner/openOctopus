@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/anner/openoctopus/internal/tmux"
@@ -704,6 +705,101 @@ func TestRunCommandWritesJSONSuccess(t *testing.T) {
 	}
 	if data["session_dir"] == "" {
 		t.Fatalf("expected session_dir, got %#v", data["session_dir"])
+	}
+}
+
+func TestRunCommandCompletesRepeatedReviewLoop(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_PRD_SPLITTER", "SUCCESS,SUCCESS,SUCCESS")
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_PRD_REVIEWER", "SUCCESS,SUCCESS,SUCCESS")
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "repeat-prd-loop"
+  name: "Repeat PRD Loop"
+
+runtime:
+  scheduler:
+    max_parallel_roles: 1
+
+llm_profiles:
+  deterministic_cli:
+    provider: "deterministic"
+    mode: "cli"
+    cli_path: "deterministic"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "prd_splitter"
+    name: "PRD Splitter"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责拆分 PRD 需求文档。"
+    tools: ["file_read"]
+
+  - id: "prd_reviewer"
+    name: "PRD Reviewer"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责 review 并给出意见。"
+    tools: ["file_read"]
+
+stages:
+  - id: "split_prd"
+    name: "拆分 PRD"
+    role: "prd_splitter"
+    output:
+      - type: "artifact"
+        name: "split_prd_doc"
+
+  - id: "review_prd"
+    name: "Review PRD"
+    role: "prd_reviewer"
+    input:
+      - type: "artifact"
+        ref: "split_prd_doc"
+    output:
+      - type: "artifact"
+        name: "review_feedback"
+
+transitions:
+  - from: "split_prd"
+    to: "review_prd"
+  - from: "review_prd"
+    to: "split_prd"
+    repeat:
+      max_rounds: 3
+      on_complete: "__END__"
+`)
+
+	sessionDir := runCommandAndParseSessionDir(t, []string{"run", "--config", configPath, "--format", "json"})
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"status", "--session", sessionDir, "--format", "json"})
+	if err := command.Execute(); err != nil {
+		t.Fatalf("status command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["workflow_status"] != "COMPLETED" {
+		t.Fatalf("expected workflow_status COMPLETED, got %#v", data["workflow_status"])
+	}
+	scheduleContent, err := os.ReadFile(filepath.Join(sessionDir, "planner", "master_schedule.md"))
+	if err != nil {
+		t.Fatalf("read schedule: %v", err)
+	}
+	text := string(scheduleContent)
+	if !strings.Contains(text, "split_prd__round_03") || !strings.Contains(text, "review_prd__round_03") {
+		t.Fatalf("expected expanded round stages in schedule, got %q", text)
 	}
 }
 

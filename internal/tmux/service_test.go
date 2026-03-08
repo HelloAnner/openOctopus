@@ -3,6 +3,7 @@ package tmux
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -76,4 +77,61 @@ func TestResolveTargetFailsForMissingRole(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected resolveTarget to fail")
 	}
+}
+
+func TestFinalizeLayoutUsesRoleLaunchCommandAndFocusesFirstRole(t *testing.T) {
+	t.Parallel()
+
+	runner := &recordingRunner{}
+	service := &Service{sessionDir: t.TempDir(), runner: runner}
+	rolePanes := map[string]PaneBinding{
+		"agent_a": {RoleID: "agent_a", PaneID: "%1", Title: "role:agent_a"},
+		"agent_b": {RoleID: "agent_b", PaneID: "%2", Title: "role:agent_b"},
+	}
+	options := BootstrapOptions{
+		SessionID:      "sess_001",
+		RoleIDs:        []string{"agent_a", "agent_b"},
+		MainPaneRatio:  0.5,
+		RoleLayout:     "adaptive_grid",
+		LaunchCommands: map[string]string{"agent_a": "printf 'boot' && codex 'agent_a'"},
+	}
+
+	err := service.finalizeLayout("octopus-sess_001", "octopus-sess_001", "%0", rolePanes, options)
+	if err != nil {
+		t.Fatalf("finalizeLayout returned error: %v", err)
+	}
+	if !runner.Contains([]string{"send-keys", "-t", "%1", "printf 'boot' && codex 'agent_a'", "C-m"}) {
+		t.Fatalf("expected launch command in send-keys, got %#v", runner.calls)
+	}
+	last := runner.LastArgs()
+	expectedLast := []string{"select-pane", "-t", "%1"}
+	if !reflect.DeepEqual(last, expectedLast) {
+		t.Fatalf("expected final focus %v, got %v", expectedLast, last)
+	}
+}
+
+type recordingRunner struct {
+	calls [][]string
+}
+
+func (r *recordingRunner) Run(_ string, args ...string) (string, error) {
+	cloned := append([]string(nil), args...)
+	r.calls = append(r.calls, cloned)
+	return "", nil
+}
+
+func (r *recordingRunner) Contains(expected []string) bool {
+	for _, call := range r.calls {
+		if reflect.DeepEqual(call, expected) {
+			return true
+		}
+	}
+	return false
+}
+
+func (r *recordingRunner) LastArgs() []string {
+	if len(r.calls) == 0 {
+		return nil
+	}
+	return r.calls[len(r.calls)-1]
 }

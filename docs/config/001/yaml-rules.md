@@ -61,6 +61,7 @@ llm_profiles:
     provider: "codex"
     mode: "cli"
     cli_path: "codex"
+    tmux_command: "codex --dangerously-bypass-approvals-and-sandbox"
 
 tool_registry:
   builtin:
@@ -157,6 +158,7 @@ transitions:
 - `LLM-006`：`max_tokens` 如声明，必须为正整数。
 - `LLM-007`：`temperature` 如声明，必须是合法浮点数，建议在 `0` 到 `1` 之间。
 - `LLM-008`：`roles[*].llm_profile` 必须引用这里已定义的 profile id。
+- `LLM-009`：`tmux_command` 仅支持 `mode=cli` 的 profile；支持 `{session_dir}`、`{role_id}`、`{prompt}` 占位符。
 
 ## 7. `tool_registry` 规则
 
@@ -261,8 +263,10 @@ transitions:
 - `TRANS-003`：`from` 必须引用已定义阶段。
 - `TRANS-004`：`to`、`on_true`、`on_false` 的目标必须引用已定义阶段或 `__END__`。
 - `TRANS-005`：条件表达式必须使用运行时支持的 condition 类型。
-- `TRANS-006`：允许业务回路，但必须受 `policies.loop_guard` 约束。
-- `TRANS-007`：禁止出现永远无法到达或无法退出的无保护环路。
+- `TRANS-006`：首版稳定支持直接流转，以及 `repeat.max_rounds + repeat.on_complete` 这种可静态展开的有界回路。
+- `TRANS-007`：`repeat.max_rounds` 必须为正整数。
+- `TRANS-008`：`repeat.on_complete` 必须声明合法出口阶段或 `__END__`。
+- `TRANS-009`：禁止出现永远无法到达或无法退出的无保护环路。
 
 ## 13. 只读产物与写权限规则
 

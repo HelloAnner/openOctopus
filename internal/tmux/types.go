@@ -16,6 +16,7 @@ type BootstrapOptions struct {
 	SocketTemplate string
 	MainPaneRatio  float64
 	RoleLayout     string
+	LaunchCommands map[string]string
 }
 
 type BootstrapResult struct {

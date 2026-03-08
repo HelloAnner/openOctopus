@@ -46,6 +46,7 @@
 3. 为主 pane 与 role pane 设置稳定标题。
 4. 把 layout 元数据写入 `state/tmux/layout.md`。
 5. 提供 `switch` 命令与 pane 捕获底层能力。
+6. 在交互式 `run` 场景下，为支持的 role pane 自动拉起对应的交互式 CLI 待命页面，并默认聚焦首个 role pane。
 
 ### 3.3 001 明确不做
 
@@ -53,7 +54,7 @@
 
 1. 不实现 tmux 内常驻 watcher / daemon。
 2. 不实现 Bubble Tea / Lip Gloss 交互式状态面板。
-3. 不把 orchestrator 或 role-runtime 的执行流重定向进 tmux pane。
+3. 不把 orchestrator 或 role-runtime 的执行流重定向进 tmux pane；role pane 中的交互式 CLI 仅作为人工协作入口，不承担正式状态推进。
 4. 不实现复杂的 pane 动态重排、拖拽、窗口组同步。
 5. 不实现 Web / tmux 跨端联动。
 
@@ -223,7 +224,17 @@ openoctopus switch --session <id> --role <role_id> --format json
 4. 如果当前进程位于 tmux 客户端内，则执行真实切换。
 5. 如果当前进程不在 tmux 客户端内，则不做 attach，只返回目标信息。
 
-### 8.3 返回字段
+### 8.3 交互式 pane 启动规则
+
+当 `run` 运行在交互式终端、且 `runtime.tmux.enabled=true` 时：
+
+1. 主 pane 仍保留 session banner 与总览入口。
+2. 支持的 role profile（当前为 `provider: codex` + `mode: cli`）会在各自 pane 内自动拉起交互式 CLI。
+3. 如 `llm_profiles.{id}.tmux_command` 已声明，则优先使用该命令；支持 `{session_dir}`、`{role_id}`、`{prompt}` 占位符。
+4. 交互式 CLI 的初始 prompt 只负责读取 `planner/requirement.snapshot.md`、对应 `context.md`、`inbox.md` 并待命，不直接替代 role-runtime 正式执行链路。
+5. tmux 默认焦点落到首个 role pane，避免进入后停在 main banner。
+
+### 8.4 返回字段
 
 建议输出：
 

@@ -8,6 +8,7 @@
 
 - 创建与维护 `octopus-{session_id}` 对应的 tmux server / session / pane 布局。
 - 根据角色数量自动编排右侧 pane，并维护主控 pane 与角色 pane 绑定关系。
+- 在交互式运行场景下，为支持的 role pane 提供待命式 CLI 页面入口。
 - 为 CLI 的 `switch`、调试、pane 捕获和运行观察提供底层能力。
 
 ## 关键输入输出

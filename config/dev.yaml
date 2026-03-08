@@ -1,0 +1,96 @@
+version: "2.1"
+
+meta:
+  workflow_id: "dev-prd-split-review-loop"
+  name: "PRD 拆分与 Review 三轮闭环"
+
+runtime:
+  tmux:
+    enabled: true
+    socket_name: "octopus-{session_id}"
+    main_pane_ratio: 0.5
+    role_layout: "adaptive_grid"
+  scheduler:
+    max_parallel_roles: 1
+  master_watch:
+    enabled: true
+    progress_file: "planner/global_progress.md"
+    blocker_file: "planner/blockers.md"
+    max_no_progress_rounds: 3
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+    # tmux_command 通过 shell 执行；当前宿主机 zsh 中 codex 被 alias 到 codex exec，
+    # 这里必须显式绕过 alias，否则会把交互命令误走到 exec 子命令。
+    tmux_command: "/usr/bin/env codex --dangerously-bypass-approvals-and-sandbox --no-alt-screen -C {session_dir} {prompt}"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+    file_write:
+      module: "openoctopus.tools.file"
+      class: "FileWriteTool"
+
+policies:
+  loop_guard:
+    max_rounds_per_task: 6
+    min_quality_gain: 0.05
+
+roles:
+  - id: "prd_splitter"
+    name: "PRD 拆分 Agent"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: |
+      你负责把平台 PRD 拆分为可执行需求块、边界、交付物和顺序。
+      你必须优先阅读原始 PRD 文件；如果会话里已经存在 review_feedback 的最新版本，请结合最新 review 意见继续迭代 split_prd_doc。
+      每一轮都输出结构更清晰、边界更明确的拆分文档。
+    tools: ["file_read", "file_write"]
+
+  - id: "prd_reviewer"
+    name: "PRD Review Agent"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: |
+      你负责 review 拆分结果，从完整性、边界、执行顺序、风险和遗漏约束五个维度给出具体意见。
+      你的输出要明确指出保留项、问题项、改进建议和下一轮 splitter 应优先修正的点。
+    tools: ["file_read", "file_write"]
+
+stages:
+  - id: "split_prd"
+    name: "拆分 PRD"
+    role: "prd_splitter"
+    input:
+      - type: "requirement_file"
+        path: "./docs/prd/prd-001.md"
+    # 当前稳定实现里，首轮 entry stage 不能直接引用回路末端 artifact；
+    # review_feedback 仍会在 session 中生成，供人工查看和后续扩展使用。
+    output:
+      - type: "artifact"
+        name: "split_prd_doc"
+
+  - id: "review_prd"
+    name: "Review PRD"
+    role: "prd_reviewer"
+    input:
+      - type: "requirement_file"
+        path: "./docs/prd/prd-001.md"
+      - type: "artifact"
+        ref: "split_prd_doc"
+    output:
+      - type: "artifact"
+        name: "review_feedback"
+
+transitions:
+  - from: "split_prd"
+    to: "review_prd"
+  - from: "review_prd"
+    to: "split_prd"
+    repeat:
+      max_rounds: 3
+      on_complete: "__END__"

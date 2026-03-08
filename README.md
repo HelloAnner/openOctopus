@@ -23,6 +23,9 @@ go build -o openoctopus ./cmd/openoctopus
 # 执行工作流
 ./openoctopus run --config ./octopus.yaml
 
+# 如果开启 runtime.tmux.enabled=true，且当前是交互式终端，run 会自动进入新建的 tmux 会话
+# role pane 会自动拉起对应 role 的交互式 Codex 页面，默认焦点落到第一个 role pane
+
 # 查看状态
 ./openoctopus status --session <session_id>
 

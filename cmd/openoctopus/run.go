@@ -52,11 +52,12 @@ func loadRunConfig(configPath string, workspaceRoot string, maxParallelRoles int
 }
 
 func executeValidatedRun(command *cobra.Command, configPath string, format string, result configservice.ValidateResult) error {
+	interactiveTmux := shouldPrepareInteractiveTmux(command, format, result.Config, defaultRunSuccessHooks())
 	createResult, err := session.Create(session.CreateOptions{Config: result.Config, ConfigPath: configPath, AppliedDefaults: result.AppliedDefaults})
 	if err != nil {
 		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 	}
-	tmuxResult, err := bootstrapTmuxIfNeeded(createResult, result.Config)
+	tmuxResult, err := bootstrapTmuxIfNeeded(createResult, result.Config, interactiveTmux)
 	if err != nil {
 		cleanupRunFailure(createResult.SessionDir, tmuxResult)
 		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
@@ -64,7 +65,7 @@ func executeValidatedRun(command *cobra.Command, configPath string, format strin
 	if err := bootstrapRunDependencies(createResult, result.Config, tmuxResult); err != nil {
 		return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 	}
-	return writeRunSuccess(command, format, createResult)
+	return handleRunSuccess(command, format, result.Config, createResult, tmuxResult, defaultRunSuccessHooks())
 }
 
 func writeRunValidationFailure(command *cobra.Command, format string, items []configerrors.ConfigError) error {
@@ -76,17 +77,22 @@ func writeRunValidationFailure(command *cobra.Command, format string, items []co
 	return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", newConfigValidationError(items))
 }
 
-func bootstrapTmuxIfNeeded(createResult session.CreateResult, config configmodel.RuntimeConfig) (tmux.BootstrapResult, error) {
+func bootstrapTmuxIfNeeded(createResult session.CreateResult, config configmodel.RuntimeConfig, interactive bool) (tmux.BootstrapResult, error) {
 	if !config.Runtime.Tmux.Enabled {
 		return tmux.BootstrapResult{}, nil
 	}
 	service := tmux.NewService(createResult.SessionDir)
+	launchCommands := map[string]string{}
+	if interactive {
+		launchCommands = buildTmuxLaunchCommands(config, createResult.SessionDir)
+	}
 	return service.Bootstrap(tmux.BootstrapOptions{
 		SessionID:      createResult.SessionID,
 		RoleIDs:        roleIDs(config.Roles),
 		SocketTemplate: config.Runtime.Tmux.SocketName,
 		MainPaneRatio:  config.Runtime.Tmux.MainPaneRatio,
 		RoleLayout:     config.Runtime.Tmux.RoleLayout,
+		LaunchCommands: launchCommands,
 	})
 }
 

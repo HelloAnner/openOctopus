@@ -90,6 +90,9 @@ func validateLLMProfile(profileID string, profile model.LLMProfile, errors *[]co
 	if profile.Mode == "cli" && profile.CLIPath == "" {
 		appendError(errors, "CFG-SCHEMA-012", configerrors.CategorySchema, pathPrefix+".cli_path", "cli 模式必须声明 cli_path", "为 CLI profile 设置可执行命令路径。", "LLM-005")
 	}
+	if strings.TrimSpace(profile.TmuxCommand) != "" && profile.Mode != "cli" {
+		appendError(errors, "CFG-SCHEMA-013", configerrors.CategorySchema, pathPrefix+".tmux_command", "tmux_command 仅支持 cli 模式", "将 mode 设置为 cli，或移除 tmux_command。", "LLM-009")
+	}
 	if profile.MaxTokens < 0 {
 		appendError(errors, "CFG-POLICY-003", configerrors.CategoryPolicy, pathPrefix+".max_tokens", "max_tokens 不能为负数", "移除该值或设置为正整数。", "LLM-006")
 	}
@@ -198,7 +201,26 @@ func validateTransitions(config model.RuntimeConfig, errors *[]configerrors.Conf
 		validateTransitionTarget(pathPrefix+".to", transition.To, stageIDs, errors)
 		validateTransitionTarget(pathPrefix+".on_true", transition.OnTrue, stageIDs, errors)
 		validateTransitionTarget(pathPrefix+".on_false", transition.OnFalse, stageIDs, errors)
+		validateRepeatTransition(pathPrefix, transition, stageIDs, errors)
 	}
+}
+
+func validateRepeatTransition(pathPrefix string, transition model.TransitionConfig, stageIDs map[string]struct{}, errors *[]configerrors.ConfigError) {
+	if !hasRepeatTransition(transition.Repeat) {
+		return
+	}
+	if transition.Repeat.MaxRounds <= 0 {
+		appendError(errors, "CFG-POLICY-010", configerrors.CategoryPolicy, pathPrefix+".repeat.max_rounds", "repeat.max_rounds 必须大于 0", "设置为正整数，例如 3。", "TRANS-007")
+	}
+	if strings.TrimSpace(transition.Repeat.OnComplete) == "" {
+		appendError(errors, "CFG-SCHEMA-014", configerrors.CategorySchema, pathPrefix+".repeat.on_complete", "repeat.on_complete 不能为空", "设置回路结束后的出口阶段或 __END__。", "TRANS-008")
+		return
+	}
+	validateTransitionTarget(pathPrefix+".repeat.on_complete", transition.Repeat.OnComplete, stageIDs, errors)
+}
+
+func hasRepeatTransition(repeat model.RepeatConfig) bool {
+	return repeat.MaxRounds > 0 || strings.TrimSpace(repeat.OnComplete) != ""
 }
 
 func validateTransitionTarget(path string, target string, stageIDs map[string]struct{}, errors *[]configerrors.ConfigError) {

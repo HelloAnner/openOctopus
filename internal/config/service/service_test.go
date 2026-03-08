@@ -201,6 +201,59 @@ transitions:
 	}
 }
 
+func TestLoadForValidateParsesLLMProfileTmuxCommand(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "tmux-command"
+  name: "Tmux Command"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+    tmux_command: "codex --dangerously-bypass-approvals-and-sandbox"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	result, err := service.LoadForValidate(service.LoadOptions{ConfigPath: configPath})
+	if err != nil {
+		t.Fatalf("LoadForValidate returned error: %v", err)
+	}
+	if result.Config.LLMProfiles["codex_cli"].TmuxCommand != "codex --dangerously-bypass-approvals-and-sandbox" {
+		t.Fatalf("expected tmux_command to be parsed, got %q", result.Config.LLMProfiles["codex_cli"].TmuxCommand)
+	}
+}
+
 func writeConfig(t *testing.T, content string) string {
 	t.Helper()
 

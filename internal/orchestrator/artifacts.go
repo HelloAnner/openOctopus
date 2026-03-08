@@ -32,6 +32,18 @@ func findStageConfig(config model.RuntimeConfig, stageID string) (model.StageCon
 			return stage, true
 		}
 	}
+	baseStageID, round, ok := splitExpandedStageID(stageID)
+	if !ok {
+		return model.StageConfig{}, false
+	}
+	for _, stage := range config.Stages {
+		if stage.ID != baseStageID {
+			continue
+		}
+		stage.ID = stageID
+		stage.Name = expandedStageName(stage.Name, round)
+		return stage, true
+	}
 	return model.StageConfig{}, false
 }
 

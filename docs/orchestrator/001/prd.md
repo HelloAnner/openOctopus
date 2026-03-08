@@ -277,11 +277,12 @@
 
 为保证 `001` 可稳定实现，阶段图约束收紧如下：
 
-1. 首版只支持 `transition.to` 的显式直接流转。
-2. `on_true`、`on_false`、`condition.expr`、`aggregate`、`role_aggregate` 在 `001` 中不解释；若配置使用这些能力，应在 orchestrator bootstrap 时显式报“不支持”。
-3. 首版允许多个 entry stage，但不支持多前驱 join stage。
-4. 同一角色同一时刻只允许一个 active task。
-5. 每轮最大新分发数不得超过 `runtime.scheduler.max_parallel_roles`。
+1. 首版稳定支持 `transition.to` 的显式直接流转，以及 `transition.repeat` 的有界回路展开。
+2. `transition.repeat` 只支持 `max_rounds + on_complete` 这类可静态展开形态；实现上在 graph build 阶段展开成线性阶段链。
+3. `on_true`、`on_false`、`condition.expr`、`aggregate`、`role_aggregate` 在 `001` 中不解释；若配置使用这些能力，应在 orchestrator bootstrap 时显式报“不支持”。
+4. 首版允许多个 entry stage，但带 `repeat` 的图当前只支持单 entry 且唯一有界回路。
+5. 同一角色同一时刻只允许一个 active task。
+6. 每轮最大新分发数不得超过 `runtime.scheduler.max_parallel_roles`。
 
 这样做的原因是：当前仓库的配置校验已经能保证引用合法，但还没有提供完整条件求值器；`001` 先把线性主链路和多入口起步做稳，后续再演进复杂路由。
 
