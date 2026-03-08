@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -125,6 +126,102 @@ func TestResumeCommandClearsInterruptAndCompletesWorkflow(t *testing.T) {
 		t.Fatalf("read session state: %v", err)
 	}
 	assertCommandContains(t, string(state), "status: COMPLETED")
+}
+
+func TestInterruptCommandWritesJSONResponse(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeHumanGateCommandConfig(t, false)
+	sessionDir := runSessionForHumanGate(t, configPath)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"interrupt", "--session", sessionDir, "--role", "agent_a", "--reason", "manual review", "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("interrupt command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeHumanGateJSON(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["interrupt_id"] == "" {
+		t.Fatalf("expected interrupt_id, got %#v", data["interrupt_id"])
+	}
+}
+
+func TestInjectCommandWritesJSONResponse(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeHumanGateCommandConfig(t, false)
+	sessionDir := runSessionForHumanGate(t, configPath)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"inject", "--session", sessionDir, "--role", "agent_a", "--message", "继续执行", "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("inject command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeHumanGateJSON(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["message_id"] != "msg-000001" {
+		t.Fatalf("expected message_id msg-000001, got %#v", data["message_id"])
+	}
+}
+
+func TestInterruptAllCommandWritesJSONResponse(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeHumanGateCommandConfig(t, true)
+	sessionDir := runSessionForHumanGate(t, configPath)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"interrupt-all", "--session", sessionDir, "--reason", "manual review", "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("interrupt-all command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeHumanGateJSON(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if int(data["requested_count"].(float64)) < 2 {
+		t.Fatalf("expected requested_count >= 2, got %#v", data["requested_count"])
+	}
+}
+
+func TestResumeCommandWritesJSONResponse(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "SUCCESS")
+	configPath := writeHumanGateCommandConfig(t, false)
+	sessionDir := runSessionForHumanGate(t, configPath)
+
+	executeHumanGateCommand(t, "interrupt", "--session", sessionDir, "--role", "agent_a", "--reason", "manual review")
+	if _, err := roleruntime.NewEngine(sessionDir).TickRole("agent_a"); err != nil {
+		t.Fatalf("tick role for interrupt ack: %v", err)
+	}
+	executeHumanGateCommand(t, "inject", "--session", sessionDir, "--role", "agent_a", "--message", "继续执行")
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "0")
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"resume", "--session", sessionDir, "--role", "agent_a", "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("resume command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeHumanGateJSON(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["session_dir"] != sessionDir {
+		t.Fatalf("expected session_dir %q, got %#v", sessionDir, data["session_dir"])
+	}
 }
 
 func writeHumanGateCommandConfig(t *testing.T, twoRoles bool) string {
@@ -268,4 +365,13 @@ func assertCommandContains(t *testing.T, content string, expected string) {
 	if !strings.Contains(content, expected) {
 		t.Fatalf("expected content to contain %q, got %q", expected, content)
 	}
+}
+
+func decodeHumanGateJSON(t *testing.T, content []byte) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("invalid json %q: %v", string(content), err)
+	}
+	return payload
 }

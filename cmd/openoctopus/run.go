@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
 
@@ -16,6 +15,7 @@ import (
 
 func newRunCommand() *cobra.Command {
 	var configPath string
+	var format string
 	var workspaceRoot string
 	var maxParallelRoles int
 	command := &cobra.Command{
@@ -27,13 +27,15 @@ func newRunCommand() *cobra.Command {
 				FlagOverrides: buildFlagOverrides(workspaceRoot, maxParallelRoles),
 			})
 			if err != nil {
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			if len(result.Errors) != 0 {
-				for _, item := range result.Errors {
-					fmt.Fprintf(command.ErrOrStderr(), "[%s] %s %s (%s)\n", item.Category, item.Path, item.Message, item.RuleID)
+				if normalizeFormat(format) == "text" {
+					if err := writeValidationTextErrors(command.ErrOrStderr(), result.Errors); err != nil {
+						return err
+					}
 				}
-				return errors.New("config validation failed")
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", newConfigValidationError(result.Errors))
 			}
 			createResult, err := session.Create(session.CreateOptions{
 				Config:          result.Config,
@@ -41,7 +43,7 @@ func newRunCommand() *cobra.Command {
 				AppliedDefaults: result.AppliedDefaults,
 			})
 			if err != nil {
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			store := eventbus.NewStore(createResult.SessionDir)
 			err = store.Bootstrap(eventbus.BootstrapOptions{
@@ -52,34 +54,41 @@ func newRunCommand() *cobra.Command {
 			})
 			if err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			artifactStore := artifact.NewStore(createResult.SessionDir)
 			if err := artifactStore.Bootstrap(); err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			master := orchestrator.NewEngine(createResult.SessionDir)
 			if err := master.Bootstrap(); err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			tick, err := master.Tick()
 			if err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 			}
 			if roleRuntimeLoopEnabled() {
 				if err := driveRoleRuntimeLoop(createResult.SessionDir, master, tick.WorkflowStatus); err != nil {
 					_ = os.RemoveAll(createResult.SessionDir)
-					return err
+					return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "run", err)
 				}
 			}
-			fmt.Fprintf(command.OutOrStdout(), "session created: %s\n", createResult.SessionDir)
-			return nil
+			return writeCommandSuccess(
+				command.OutOrStdout(),
+				command.ErrOrStderr(),
+				format,
+				"run",
+				fmt.Sprintf("session created: %s", createResult.SessionDir),
+				map[string]any{"session_id": createResult.SessionID, "session_dir": createResult.SessionDir},
+			)
 		},
 	}
 	command.Flags().StringVar(&configPath, "config", "", "path to octopus.yaml")
+	command.Flags().StringVar(&format, "format", "text", "output format: text|json")
 	command.Flags().StringVar(&workspaceRoot, "workspace-root", "", "override runtime.workspace.root")
 	command.Flags().IntVar(&maxParallelRoles, "max-parallel-roles", 0, "override runtime.scheduler.max_parallel_roles")
 	_ = command.MarkFlagRequired("config")

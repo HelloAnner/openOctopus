@@ -12,10 +12,26 @@
     - `2026-03-08-human-gate-001-implementation.md`
       - 做什么：拆解 human-gate 001 的实现顺序、命令入口、恢复逻辑、E2E 夹具和最终验证步骤。
       - 核心改进点/修改差异：在完成 human-gate 001 PRD、E2E 与模块内 plans 设计后，进一步补上一份可直接执行的实现计划，把“人工打断 / 注入 / 恢复”收敛成可按 TDD 推进的落地任务。
+    - `2026-03-08-cli-001-implementation.md`
+      - 做什么：拆解 cli 001 的输出协议、status 命令、退出码、E2E 夹具和最终验证步骤。
+      - 核心改进点/修改差异：在完成 cli 001 PRD、E2E 与模块内 plans 设计后，进一步补上一份可直接执行的实现计划，把“统一输出 / 状态观测 / 最小退出码”收敛成可按 TDD 推进的落地任务。
   - `cli/`
     - `prd.md`
       - 做什么：规划 CLI 生命周期命令、状态查看、调试与报告输出文档。
-      - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+      - 核心改进点/修改差异：保留模块总纲边界，作为 `001` 版本化落地前的职责说明。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-output-model-and-exit-codes.md`
+        - `02-session-resolution-and-status-reader.md`
+        - `03-validate-run-format-unification.md`
+        - `04-human-gate-command-format-unification.md`
+        - `05-status-command-and-root-wiring.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 cli 首版的统一 `text/json` 输出、最小退出码、session 状态观测与正式命令协议，并按实现主题拆分执行计划。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 与 plans，把 cli 从“只有职责说明”推进到“可按任务顺序实现”的首版正式门面协议。
   - `config/`
     - `prd.md`
       - 做什么：规划 YAML 配置模型、默认值策略、静态校验和安全限制文档。

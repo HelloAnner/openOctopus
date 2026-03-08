@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -627,4 +628,298 @@ transitions:
 	if !bytes.Contains(conclusionContent, []byte("- status: SUCCESS")) {
 		t.Fatalf("expected successful conclusion after retry, got %q", string(conclusionContent))
 	}
+}
+
+func TestValidateCommandWritesJSONSuccess(t *testing.T) {
+	configPath := writeCommandConfig(t, validCodexCommandConfig("json-validate-success", "JSON Validate Success"))
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"validate", "--config", configPath, "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("validate command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	assertJSONFieldString(t, payload, "command", "validate")
+	assertJSONFieldBool(t, payload, "ok", true)
+	data := payload["data"].(map[string]any)
+	if int(data["applied_defaults_count"].(float64)) <= 0 {
+		t.Fatalf("expected applied defaults count > 0, got %#v", data["applied_defaults_count"])
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestValidateCommandWritesJSONFailure(t *testing.T) {
+	configPath := writeCommandConfig(t, invalidCommandConfig("json-validate-failure", "JSON Validate Failure"))
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"validate", "--config", configPath, "--format", "json"})
+
+	err := command.Execute()
+	if err == nil {
+		t.Fatal("expected validate command to fail")
+	}
+	payload := decodeJSONPayload(t, stderr.Bytes())
+	assertJSONFieldString(t, payload, "command", "validate")
+	assertJSONFieldBool(t, payload, "ok", false)
+	errorBody := payload["error"].(map[string]any)
+	if errorBody["code"] != "config_validation_failed" {
+		t.Fatalf("expected config_validation_failed, got %#v", errorBody["code"])
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("expected empty stdout, got %q", stdout.String())
+	}
+}
+
+func TestRunCommandWritesJSONSuccess(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DISABLE_ROLE_RUNTIME_LOOP", "1")
+	configPath := writeCommandConfig(t, validCodexCommandConfig("json-run-success", "JSON Run Success"))
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath, "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("run command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["session_id"] == "" {
+		t.Fatalf("expected session_id, got %#v", data["session_id"])
+	}
+	if data["session_dir"] == "" {
+		t.Fatalf("expected session_dir, got %#v", data["session_dir"])
+	}
+}
+
+func TestStatusCommandWritesJSONSummary(t *testing.T) {
+	t.Setenv("OPENOCTOPUS_DETERMINISTIC_RESULTS_AGENT_A", "SUCCESS")
+	configPath := writeCommandConfig(t, validDeterministicCommandConfig("json-status-success", "JSON Status Success"))
+	sessionDir := runCommandAndParseSessionDir(t, []string{"run", "--config", configPath, "--format", "json"})
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"status", "--session", sessionDir, "--format", "json"})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("status command failed: %v, stderr=%q", err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	if data["workflow_status"] != "COMPLETED" {
+		t.Fatalf("expected workflow_status COMPLETED, got %#v", data["workflow_status"])
+	}
+	if data["current_stage_id"] != "stage_a" {
+		t.Fatalf("expected current_stage_id stage_a, got %#v", data["current_stage_id"])
+	}
+}
+
+func TestStatusCommandFailsForMissingSession(t *testing.T) {
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"status", "--session", "missing", "--format", "json"})
+
+	err := command.Execute()
+	if err == nil {
+		t.Fatal("expected status command to fail")
+	}
+	payload := decodeJSONPayload(t, stderr.Bytes())
+	errorBody := payload["error"].(map[string]any)
+	if errorBody["code"] != "session_not_found" {
+		t.Fatalf("expected session_not_found, got %#v", errorBody["code"])
+	}
+}
+
+func TestExecuteMapsExitCodes(t *testing.T) {
+	invalidConfigPath := writeCommandConfig(t, invalidCommandConfig("execute-invalid", "Execute Invalid"))
+	if code := execute([]string{"validate", "--config", invalidConfigPath, "--format", "json"}, &bytes.Buffer{}, &bytes.Buffer{}); code != exitCodeConfigValidationFailed {
+		t.Fatalf("expected validate exit code %d, got %d", exitCodeConfigValidationFailed, code)
+	}
+	if code := execute([]string{"status", "--session", "missing", "--format", "json"}, &bytes.Buffer{}, &bytes.Buffer{}); code != exitCodeSessionNotFound {
+		t.Fatalf("expected status exit code %d, got %d", exitCodeSessionNotFound, code)
+	}
+}
+
+func runCommandAndParseSessionDir(t *testing.T, args []string) string {
+	t.Helper()
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs(args)
+	if err := command.Execute(); err != nil {
+		t.Fatalf("command %v failed: %v, stderr=%q", args, err, stderr.String())
+	}
+	payload := decodeJSONPayload(t, stdout.Bytes())
+	data := payload["data"].(map[string]any)
+	return data["session_dir"].(string)
+}
+
+func decodeJSONPayload(t *testing.T, content []byte) map[string]any {
+	t.Helper()
+	var payload map[string]any
+	if err := json.Unmarshal(content, &payload); err != nil {
+		t.Fatalf("invalid json %q: %v", string(content), err)
+	}
+	return payload
+}
+
+func assertJSONFieldString(t *testing.T, payload map[string]any, key string, expected string) {
+	t.Helper()
+	if payload[key] != expected {
+		t.Fatalf("expected %s=%q, got %#v", key, expected, payload[key])
+	}
+}
+
+func assertJSONFieldBool(t *testing.T, payload map[string]any, key string, expected bool) {
+	t.Helper()
+	if payload[key] != expected {
+		t.Fatalf("expected %s=%t, got %#v", key, expected, payload[key])
+	}
+}
+
+func validCodexCommandConfig(workflowID string, workflowName string) string {
+	return `
+version: "2.1"
+
+meta:
+  workflow_id: "` + workflowID + `"
+  name: "` + workflowName + `"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`
+}
+
+func validDeterministicCommandConfig(workflowID string, workflowName string) string {
+	return `
+version: "2.1"
+
+meta:
+  workflow_id: "` + workflowID + `"
+  name: "` + workflowName + `"
+
+llm_profiles:
+  deterministic_cli:
+    provider: "deterministic"
+    mode: "cli"
+    cli_path: "deterministic"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "deterministic_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`
+}
+
+func invalidCommandConfig(workflowID string, workflowName string) string {
+	return `
+version: "2.1"
+
+meta:
+  workflow_id: "` + workflowID + `"
+  name: "` + workflowName + `"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "missing_role"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`
 }

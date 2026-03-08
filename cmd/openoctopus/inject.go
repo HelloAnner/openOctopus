@@ -14,31 +14,35 @@ func newInjectCommand() *cobra.Command {
 	var roleID string
 	var message string
 	var inputPath string
+	var format string
 	command := &cobra.Command{
 		Use:   "inject",
 		Short: "追加人工补充消息",
 		RunE: func(command *cobra.Command, _ []string) error {
 			content, err := loadInjectedMessage(message, inputPath)
 			if err != nil {
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "inject", err)
 			}
-			workingDir, err := os.Getwd()
+			sessionDir, err := resolveCommandSessionDir(sessionRef)
 			if err != nil {
-				return err
-			}
-			sessionDir, err := humangate.ResolveSessionDir(sessionRef, workingDir)
-			if err != nil {
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "inject", mapStatusError(err))
 			}
 			result, err := humangate.NewService(sessionDir).Inject(humangate.InjectOptions{RoleID: roleID, Message: content})
 			if err != nil {
-				return err
+				return renderCommandError(command.OutOrStdout(), command.ErrOrStderr(), format, "inject", err)
 			}
-			_, _ = fmt.Fprintf(command.OutOrStdout(), "message appended: %s\n", result.MessageID)
-			return nil
+			return writeCommandSuccess(
+				command.OutOrStdout(),
+				command.ErrOrStderr(),
+				format,
+				"inject",
+				fmt.Sprintf("message appended: %s", result.MessageID),
+				map[string]any{"message_id": result.MessageID, "path": result.Path, "session_dir": sessionDir},
+			)
 		},
 	}
 	command.Flags().StringVar(&sessionRef, "session", "", "session id or session dir")
+	command.Flags().StringVar(&format, "format", "text", "output format: text|json")
 	command.Flags().StringVar(&roleID, "role", "", "target role id")
 	command.Flags().StringVar(&message, "message", "", "inline human message")
 	command.Flags().StringVar(&inputPath, "input", "", "input markdown path")
