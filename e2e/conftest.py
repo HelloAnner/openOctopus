@@ -102,6 +102,36 @@ def run_harness(eventbus_harness_path: Path):
         )
 
     return _run
+
+@pytest.fixture(scope="session")
+def orchestrator_harness_path(project_root: Path, workspace_dir: Path) -> Path:
+    binary = workspace_dir / "bin" / "orchestrator-harness"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["go", "build", "-o", str(binary), "./e2e/orchestrator/harness"],
+        cwd=project_root,
+        check=True,
+    )
+    return binary
+
+
+@pytest.fixture()
+def run_orchestrator_harness(orchestrator_harness_path: Path):
+    def _run(args, cwd: Path, env: Optional[dict] = None):
+        runtime_env = os.environ.copy()
+        if env:
+            runtime_env.update(env)
+        return subprocess.run(
+            [str(orchestrator_harness_path), *args],
+            cwd=cwd,
+            env=runtime_env,
+            capture_output=True,
+            text=True,
+        )
+
+    return _run
+
+
 @pytest.fixture()
 def run_cli(binary_path: Path, real_codex_env: Path):
     def _run(args, cwd: Path, env: Optional[dict] = None):

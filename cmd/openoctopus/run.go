@@ -7,6 +7,7 @@ import (
 
 	"github.com/anner/openoctopus/internal/config/service"
 	"github.com/anner/openoctopus/internal/eventbus"
+	"github.com/anner/openoctopus/internal/orchestrator"
 	"github.com/anner/openoctopus/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -48,6 +49,15 @@ func newRunCommand() *cobra.Command {
 				MetadataRef: "metadata.md",
 			})
 			if err != nil {
+				_ = os.RemoveAll(createResult.SessionDir)
+				return err
+			}
+			engine := orchestrator.NewEngine(createResult.SessionDir)
+			if err := engine.Bootstrap(); err != nil {
+				_ = os.RemoveAll(createResult.SessionDir)
+				return err
+			}
+			if _, err := engine.Tick(); err != nil {
 				_ = os.RemoveAll(createResult.SessionDir)
 				return err
 			}

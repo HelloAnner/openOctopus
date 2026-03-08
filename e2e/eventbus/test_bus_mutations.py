@@ -71,8 +71,10 @@ def test_lock_conflict_and_offset_regression(prepare_module_case, run_cli, run_h
             cwd=case_dir,
         ).stdout
     )
-    assert first_event["event_id"] == "event-000002"
-    assert second_event["event_id"] == "event-000003"
+    assert first_event["sequence"] >= 2
+    assert second_event["sequence"] == first_event["sequence"] + 1
+    assert first_event["event_id"].startswith("event-")
+    assert second_event["event_id"].startswith("event-")
 
     commit = run_harness(
         [

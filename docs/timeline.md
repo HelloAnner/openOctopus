@@ -64,7 +64,20 @@
   - `orchestrator/`
     - `prd.md`
       - 做什么：规划主 Agent 调度、任务拆分、阶段流转与回路控制文档。
-      - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+      - 核心改进点/修改差异：保留模块总纲边界，作为 `001` 版本化落地前的职责说明。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-bootstrap-and-planner-layout.md`
+        - `02-stage-graph-and-schedule-projections.md`
+        - `03-requirement-snapshot-and-human-message-cursor.md`
+        - `04-dispatch-packages-and-role-context.md`
+        - `05-decision-loop-and-run-integration.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 orchestrator 首版的 planner bootstrap、阶段图投影、人工输入吸收、角色任务分发、结论收口与黑盒验证方案。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 和 plans，把 orchestrator 从“只有职责说明”推进到“可按任务顺序实现”的首版协议基线。
   - `role-runtime/`
     - `prd.md`
       - 做什么：规划角色执行器、回合文件协议、结论回传与状态同步文档。

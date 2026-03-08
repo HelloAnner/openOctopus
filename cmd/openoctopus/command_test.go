@@ -308,3 +308,84 @@ func writeCommandConfig(t *testing.T, content string) string {
 	}
 	return configPath
 }
+
+func TestRunCommandBootstrapsOrchestrator(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-run-orchestrator"
+  name: "Valid Run Orchestrator"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	if err := command.Execute(); err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, err := os.ReadDir(sessionsDir)
+	if err != nil {
+		t.Fatalf("read sessions dir: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+
+	scheduleContent, err := os.ReadFile(filepath.Join(sessionDir, "planner", "master_schedule.md"))
+	if err != nil {
+		t.Fatalf("read schedule: %v", err)
+	}
+	if bytes.Contains(scheduleContent, []byte("Initialized by session 001.")) || !bytes.Contains(scheduleContent, []byte("stage_id: stage_a")) {
+		t.Fatalf("expected orchestrator schedule to be bootstrapped, got %q", string(scheduleContent))
+	}
+
+	contextContent, err := os.ReadFile(filepath.Join(sessionDir, "roles", "agent_a", "context.md"))
+	if err != nil {
+		t.Fatalf("read context: %v", err)
+	}
+	if !bytes.Contains(contextContent, []byte("task_id: task-stage_a-01")) {
+		t.Fatalf("expected role context to be dispatched, got %q", string(contextContent))
+	}
+}
