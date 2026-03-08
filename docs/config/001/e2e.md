@@ -4,14 +4,15 @@
 
 `config 001` 的 E2E 不验证内部实现细节，只验证一个黑盒事实：**给定不同来源的配置输入，`openoctopus validate` 和 `openoctopus run` 是否能在真实环境里输出正确结果，并在非法场景下稳定阻断。**
 
-本方案遵循仓库既定 E2E 原则：
+本方案遵循仓库当前 E2E 原则：
 
-- 真实本地 Docker 环境优先。
-- 每次执行前先 `docker compose down -v` 清理环境。
+- 涉及 `codex` 的链路优先直接复用宿主机真实 `~/.codex/` 环境。
+- 默认在仓库根目录下使用 `e2e-test/` 作为真实测试工作目录。
+- 每次执行前先清理旧的 `e2e-test/`。
 - 不 mock 配置校验链路。
 - 通过 CLI 进程退出码、标准输出、标准错误和文件系统副作用做黑盒断言。
 
-由于 `config 001` 还没有浏览器前端，因此本阶段 E2E 以 `pytest + subprocess + docker compose` 为主；`playwright` 保留在统一 E2E 依赖中，但本阶段不是主断言手段。
+由于 `config 001` 还没有浏览器前端，因此本阶段 E2E 以 `pytest + subprocess` 为主；`playwright` 保留在统一 E2E 依赖中，但本阶段不是主断言手段。
 
 ## 2. 验证范围
 
@@ -24,6 +25,7 @@
 5. 默认值注入后，最小可运行配置仍可通过校验。
 6. 结构、引用、安全、只读产物、策略阈值错误可以被黑盒识别。
 7. 错误输出包含字段路径、错误分类和可读修复建议。
+8. 真实 `codex` CLI 与 `~/.codex/` 可在测试前置检查中被正确识别。
 
 ### 2.2 本阶段暂不覆盖
 
@@ -43,8 +45,9 @@
 e2e/
 ├── requirements.txt
 ├── conftest.py
-├── docker-compose.test.yml
 ├── config/
+│   ├── config.test.yaml
+│   ├── .env.test
 │   ├── fixtures/
 │   │   ├── valid-minimal/
 │   │   │   └── octopus.yaml
@@ -65,18 +68,26 @@ e2e/
 └── README.md
 ```
 
-### 3.1 Docker 约定
+额外约束：
 
-`docker-compose.test.yml` 至少包含一个测试容器：
+- 真实运行时工作目录统一写入仓库根目录 `e2e-test/`。
+- 若用例涉及 `provider: codex` 或 `cli_path: codex`，必须显式复用宿主机 `~/.codex/`。
+- 未经用户明确要求，不再引入 Docker 作为本模块 `001` 的默认 E2E 载体。
 
-- 构建当前仓库的 `openoctopus` 二进制或镜像。
-- 挂载 `e2e/config/fixtures` 到容器内固定路径。
-- 在容器内执行 `validate` / `run` 命令。
+### 3.1 宿主机执行约定
+
+宿主机执行流程如下：
+
+1. 清理 `e2e-test/`。
+2. 构建当前仓库的 `openoctopus` 二进制。
+3. 将 fixture 复制到 `e2e-test/{case_name}/`。
+4. 在该目录内执行 `validate` / `run` 命令。
+5. 用 `.octopus/`、`metadata.md`、退出码和标准输出做黑盒断言。
 
 执行前固定清理：
 
 ```bash
-docker compose -f e2e/docker-compose.test.yml down -v
+rm -rf ./e2e-test
 ```
 
 执行命令推荐：
@@ -139,6 +150,7 @@ pytest e2e/config -v
 | CFG-E2E-006 | 监控阈值非法阻断 | `invalid-threshold/octopus.yaml` | `validate` 非 0，输出 `policy` 类错误 |
 | CFG-E2E-007 | 环境变量覆盖 YAML | `valid-env-override/octopus.yaml` + env | `validate` 成功 |
 | CFG-E2E-008 | `run` 前置阻断 | 任一非法 YAML | `run` 非 0，且不创建 session 目录 |
+| CFG-E2E-009 | 真实 Codex 环境可见 | 宿主机 `~/.codex/` + `codex --version` | 测试前置检查通过 |
 
 ## 6. 关键断言方式
 
@@ -159,7 +171,7 @@ pytest e2e/config -v
 ### 6.3 `run` 阻断断言
 
 - 进程退出码非 `0`。
-- `.octopus/sessions` 不存在，或保持为空。
+- `e2e-test/{case_name}/.octopus/sessions` 不存在，或保持为空。
 - 不产生伪成功的 session 元数据、bus、roles 目录。
 
 ## 7. 推荐测试实现
@@ -169,10 +181,12 @@ pytest e2e/config -v
 `conftest.py` 建议提供：
 
 - `project_root`
-- `compose_file`
+- `binary_path`
+- `workspace_dir`
 - `run_cli(command: list[str], env: dict[str, str] | None = None)`
 - `clean_environment()`
 - `assert_no_session_created()`
+- `real_codex_env()`
 
 ### 7.2 CLI 调用方式
 
@@ -183,7 +197,7 @@ result = run_cli([
     "openoctopus",
     "validate",
     "--config",
-    "/work/e2e/config/fixtures/valid-minimal/octopus.yaml",
+    "/repo/e2e-test/valid-minimal/octopus.yaml",
 ])
 ```
 
@@ -206,6 +220,7 @@ result = run_cli([
 - `run` 启动前阻断
 - 优先级覆盖
 - 默认值最小可运行
+- 宿主机真实 Codex 环境探测
 
 ### 8.2 第二批：与 CLI / session 联动增强
 
@@ -220,10 +235,11 @@ result = run_cli([
 
 以下条件同时满足，才视为 `config 001` 的 E2E 方案达标：
 
-1. 核心 8 个黑盒用例都可以在本地 Docker 环境稳定复现。
+1. 核心黑盒用例都可以在宿主机真实 `~/.codex/` 环境下稳定复现。
 2. 同一非法 YAML 连续执行两次，失败结果类别与退出码一致。
 3. `run` 的失败不会留下半初始化 session 垃圾目录。
 4. 覆盖优先级、默认值、结构校验、引用校验、安全校验、策略校验六类核心能力。
+5. 真实 Codex 环境探测通过，且测试不会覆盖宿主机 `~/.codex/` 配置。
 
 ## 10. 与后续模块的衔接
 

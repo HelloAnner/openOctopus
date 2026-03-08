@@ -1,0 +1,4 @@
+runtime:
+  mode: host
+codex:
+  home_source: ~/.codex

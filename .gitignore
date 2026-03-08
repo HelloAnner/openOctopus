@@ -87,6 +87,7 @@ storybook-static
 # Temporary folders
 tmp/
 temp/
+e2e-test/
 
 # Python
 __pycache__/

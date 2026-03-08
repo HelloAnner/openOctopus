@@ -38,8 +38,10 @@
 
 - **真实环境优先**：E2E 必须基于真实本地 Docker 启动的完整服务，禁止 Mock 服务端
 - **黑盒验证**：通过 HTTP API + 浏览器前端交互验证，不依赖内部实现细节
-- **干净环境**：每次运行前 clean 旧容器和 volume（`docker compose down -v`）
+- **干净环境**：每次运行前清理旧的测试工作目录；如使用宿主机直跑方案，默认清理仓库根目录下的 `e2e-test/`
 - **自动化**：使用 **Python 脚本 + Playwright**（agent-browser）实现，CI 可直接执行
+- **Codex 环境复用**：凡是 E2E 涉及 `codex` CLI、role runtime 中的 Codex 执行链路、或任何读取 Codex 本地配置的场景，必须直接复用宿主机真实 `~/.codex/` 环境，禁止伪造 token、禁止使用假的 `CODEX_HOME` 替代真实目录，除非用户明确要求做隔离副本
+- **宿主机优先原则**：如果被测链路依赖宿主机已登录的 Codex CLI 状态，优先在宿主机直接执行测试，并使用仓库根目录下的 `e2e-test/` 作为真实测试工作目录；无特殊要求时不要再引入 Docker
 
 ### 4.2 工具选型
 
@@ -48,23 +50,35 @@
 | `pytest`               | 测试框架，用例组织与断言                  |
 | `requests`             | HTTP API 测试（登录、接口调用、状态轮询） |
 | `playwright`（Python） | 浏览器自动化，测试前端 UI 交互            |
-| `docker compose`       | 启动/停止测试容器，exec 进容器验证        |
+| `docker compose`       | 仅在用户明确要求容器化 E2E 时使用         |
+| `codex` CLI            | 真实验证本机 Codex 运行环境与配置装载     |
 
 ### 4.3 E2E 文件结构规范
 
 ```
 e2e/
 ├── requirements.txt              # Python 依赖（pytest/playwright/requests）
-├── conftest.py                   # session 级 fixtures：docker_service / auth_token / base_url
-├── docker-compose.test.yml       # E2E 专用 Compose（最简配置，cat mock 引擎）
+├── conftest.py                   # session 级 fixtures：binary_path / codex_home / workspace_dir
+├── docker-compose.test.yml       # 仅在用户明确要求容器化 E2E 时保留
 ├── config/
-│   ├── config.test.yaml          # 测试配置（无真实引擎，auth password 固定）
-│   └── .env.test                 # 测试环境变量
+│   ├── config.test.yaml          # 测试配置（如涉及 Codex，需显式声明 `CODEX_HOME` / `codex` 路径策略）
+│   └── .env.test                 # 测试环境变量（可指向宿主机 `~/.codex/`）
 ├── {module}/                     # 按模块分目录（infra / iam / task / ...）
 │   ├── test_xxx.py               # 测试文件
 │   └── ...
 └── README.md                     # 快速上手（如何安装依赖、如何运行）
 ```
+
+### 4.4 Codex 相关 E2E 补充约束
+
+- 只要测试链路里出现 `provider: codex`、`cli_path: codex`、或任何依赖 `~/.codex/` 的读取行为，就必须把这条链路视为“真实 Codex E2E”，不能退化成纯 mock。
+- 如果测试在宿主机直接运行，优先读取当前用户真实 `~/.codex/`，并将真实测试产物、临时配置、session 目录统一写入仓库根目录 `e2e-test/`。
+- 如果测试在 Docker 内运行，必须至少保证以下挂载：
+  - `~/.codex/auth.json`
+  - `~/.codex/config.toml`
+  - `~/.codex/prompts/`
+  - `~/.codex/skills/`
+- 涉及真实 Codex 环境的测试必须避免写坏宿主机配置；如测试需要写入，优先写测试工作目录，禁止覆盖 `~/.codex/` 内已有配置文件。
 
 ## 6. 任务收尾要求
 
