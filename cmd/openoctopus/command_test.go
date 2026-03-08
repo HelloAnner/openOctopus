@@ -66,6 +66,175 @@ transitions:
 	}
 }
 
+func TestRunCommandCreatesSessionSkeleton(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-run"
+  name: "Valid Run"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	err := command.Execute()
+	if err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+	if !bytes.Contains(stdout.Bytes(), []byte("session created:")) {
+		t.Fatalf("expected stdout to contain session path, got %q", stdout.String())
+	}
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, readErr := os.ReadDir(sessionsDir)
+	if readErr != nil {
+		t.Fatalf("read sessions dir: %v", readErr)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+	requiredFiles := []string{
+		filepath.Join(sessionDir, "metadata.md"),
+		filepath.Join(sessionDir, "session.state.md"),
+		filepath.Join(sessionDir, "timeline.md"),
+		filepath.Join(sessionDir, "state", "effective_config.yaml"),
+		filepath.Join(sessionDir, "state", "checkpoints", "0000-init.md"),
+	}
+	for _, item := range requiredFiles {
+		if _, statErr := os.Stat(item); statErr != nil {
+			t.Fatalf("expected %q to exist: %v", item, statErr)
+		}
+	}
+	metadata, readErr := os.ReadFile(filepath.Join(sessionDir, "metadata.md"))
+	if readErr != nil {
+		t.Fatalf("read metadata: %v", readErr)
+	}
+	if !bytes.Contains(metadata, []byte("- applied_defaults_count: 1")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 2")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 3")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 4")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 5")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 6")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 7")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 8")) && !bytes.Contains(metadata, []byte("- applied_defaults_count: 9")) {
+		t.Fatalf("expected metadata to record non-zero applied defaults count, got %q", string(metadata))
+	}
+}
+
+func TestRunCommandBootstrapsEventBus(t *testing.T) {
+	t.Parallel()
+
+	configPath := writeCommandConfig(t, `
+version: "2.1"
+
+meta:
+  workflow_id: "valid-run-eventbus"
+  name: "Valid Run Event Bus"
+
+llm_profiles:
+  codex_cli:
+    provider: "codex"
+    mode: "cli"
+    cli_path: "codex"
+
+tool_registry:
+  builtin:
+    file_read:
+      module: "openoctopus.tools.file"
+      class: "FileReadTool"
+
+roles:
+  - id: "agent_a"
+    name: "Agent A"
+    type: "react"
+    llm_profile: "codex_cli"
+    system_prompt: "你负责执行任务。"
+    tools: ["file_read"]
+
+stages:
+  - id: "stage_a"
+    name: "Stage A"
+    role: "agent_a"
+    output:
+      - type: "artifact"
+        name: "artifact_a"
+
+transitions:
+  - from: "stage_a"
+    to: "__END__"
+`)
+
+	stdout := &bytes.Buffer{}
+	stderr := &bytes.Buffer{}
+	command := NewRootCommand()
+	command.SetOut(stdout)
+	command.SetErr(stderr)
+	command.SetArgs([]string{"run", "--config", configPath})
+
+	err := command.Execute()
+	if err != nil {
+		t.Fatalf("expected run command to succeed: %v, stderr=%q", err, stderr.String())
+	}
+
+	sessionsDir := filepath.Join(filepath.Dir(configPath), ".octopus", "sessions")
+	entries, readErr := os.ReadDir(sessionsDir)
+	if readErr != nil {
+		t.Fatalf("read sessions dir: %v", readErr)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("expected exactly one session dir, got %d", len(entries))
+	}
+	sessionDir := filepath.Join(sessionsDir, entries[0].Name())
+
+	eventsFile, readErr := os.ReadFile(filepath.Join(sessionDir, "bus", "events.md"))
+	if readErr != nil {
+		t.Fatalf("read bus events: %v", readErr)
+	}
+	if !bytes.Contains(eventsFile, []byte("SESSION_CREATED")) || !bytes.Contains(eventsFile, []byte("event-000001")) {
+		t.Fatalf("expected bootstrap event in bus/events.md, got %q", string(eventsFile))
+	}
+
+	lockFile, readErr := os.ReadFile(filepath.Join(sessionDir, "bus", "lock.md"))
+	if readErr != nil {
+		t.Fatalf("read lock file: %v", readErr)
+	}
+	if bytes.Contains(lockFile, []byte("Initialized by session 001.")) || !bytes.Contains(lockFile, []byte("- status: FREE")) {
+		t.Fatalf("expected initialized bus lock file, got %q", string(lockFile))
+	}
+}
+
 func TestRunCommandDoesNotCreateSessionForInvalidConfig(t *testing.T) {
 	t.Parallel()
 

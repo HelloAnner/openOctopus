@@ -30,11 +30,37 @@
   - `session/`
     - `prd.md`
       - 做什么：规划 session 生命周期、工作目录结构、状态快照与 checkpoint 文档。
-      - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+      - 核心改进点/修改差异：先建立模块总纲边界，明确 session 作为文件系统会话载体的职责，再由下方 `001` 版本继续细化首版落地协议。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-session-layout-and-types.md`
+        - `02-path-resolution-and-session-id.md`
+        - `03-initial-files-and-config-snapshot.md`
+        - `04-atomic-write-and-rollback.md`
+        - `05-run-command-integration.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 session 首版的工作目录骨架、初始化元数据、状态快照、时间线、初始 checkpoint、有效配置快照协议，并按实现主题拆分执行计划。
+      - 核心改进点/修改差异：在原有 `001` PRD 与 E2E 基线上，继续补齐 `plans/` 目录，把 session 首版从“可评审”推进到“可按任务串行实施”，替换原先只有目标文档、缺少实现拆分的状态。
   - `event-bus/`
     - `prd.md`
       - 做什么：规划事件总线、WAL 落盘、锁协议、offset 与 heartbeat 文档。
-      - 核心改进点/修改差异：当前完成模块总纲文档，尚未进入版本化阶段。
+      - 核心改进点/修改差异：当前完成模块总纲文档，作为版本化设计前的模块边界说明。
+    - `001/`
+      - `prd.md`
+      - `e2e.md`
+      - `plans/`
+        - `README.md`
+        - `01-bootstrap-and-store-types.md`
+        - `02-event-wal-and-hash-chain.md`
+        - `03-lock-lease-and-conflict-control.md`
+        - `04-offsets-and-interrupt-projections.md`
+        - `05-service-facade-and-run-integration.md`
+        - `06-e2e-fixtures-and-tests.md`
+      - 做什么：定义 event-bus 首版的 bus bootstrap、事件 WAL、哈希链校验、租约锁、offset 投影、interrupt 投影与黑盒验证方案。
+      - 核心改进点/修改差异：在原有模块总纲基础上，补齐 `001` 的 PRD、E2E 和 plans，把 event-bus 从“只有职责说明”推进到“可按任务顺序实现”的首版协议基线。
   - `orchestrator/`
     - `prd.md`
       - 做什么：规划主 Agent 调度、任务拆分、阶段流转与回路控制文档。

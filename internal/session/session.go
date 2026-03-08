@@ -1,36 +1,56 @@
 package session
 
 import (
-	"fmt"
+	"errors"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/anner/openoctopus/internal/config/model"
 )
 
-func CreateSkeleton(config model.RuntimeConfig, configPath string) (string, error) {
-	baseDir := filepath.Dir(configPath)
-	sessionsDir := resolvePath(baseDir, config.Runtime.Workspace.SessionsDir)
+// Create 创建 session 001 约定的标准工作目录骨架与初始化文件。
+func Create(options CreateOptions) (CreateResult, error) {
+	if options.ConfigPath == "" {
+		return CreateResult{}, errors.New("config path is required")
+	}
+	sessionsDir := resolveSessionsDir(options.ConfigPath, options.Config.Runtime.Workspace.SessionsDir)
 	if err := os.MkdirAll(sessionsDir, 0o755); err != nil {
-		return "", err
+		return CreateResult{}, err
 	}
-	sessionID := fmt.Sprintf("sess_%d", time.Now().UnixNano())
-	sessionDir := filepath.Join(sessionsDir, sessionID)
-	if err := os.MkdirAll(sessionDir, 0o755); err != nil {
-		return "", err
+	sessionID, sessionDir, err := createSessionDir(sessionsDir)
+	if err != nil {
+		return CreateResult{}, err
 	}
-	metadataPath := filepath.Join(sessionDir, "metadata.md")
-	metadata := fmt.Sprintf("# Session Metadata\n\n- session_id: %s\n- workflow_id: %s\n", sessionID, config.Meta.WorkflowID)
-	if err := os.WriteFile(metadataPath, []byte(metadata), 0o644); err != nil {
-		return "", err
+	result := buildCreateResult(sessionID, sessionDir)
+	if err := initializeSessionDirectories(result.SessionDir); err != nil {
+		cleanupSessionDir(result.SessionDir)
+		return CreateResult{}, err
 	}
-	return sessionDir, nil
+	files, err := renderSessionFiles(result, options)
+	if err != nil {
+		cleanupSessionDir(result.SessionDir)
+		return CreateResult{}, err
+	}
+	if err := writeSessionFiles(files); err != nil {
+		cleanupSessionDir(result.SessionDir)
+		return CreateResult{}, err
+	}
+	return result, nil
 }
 
-func resolvePath(baseDir string, target string) string {
-	if filepath.IsAbs(target) {
-		return target
+// CreateSkeleton 兼容当前调用方，返回已创建的 session 目录。
+func CreateSkeleton(config model.RuntimeConfig, configPath string) (string, error) {
+	result, err := Create(CreateOptions{Config: config, ConfigPath: configPath})
+	if err != nil {
+		return "", err
 	}
-	return filepath.Join(baseDir, target)
+	return result.SessionDir, nil
+}
+
+func cleanupSessionDir(sessionDir string) {
+	_ = os.RemoveAll(sessionDir)
+}
+
+func sessionJoin(sessionDir string, relativePath string) string {
+	return filepath.Join(sessionDir, relativePath)
 }

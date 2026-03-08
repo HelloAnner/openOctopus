@@ -6,6 +6,6 @@ test:
 	go test ./...
 
 e2e:
-	$(PYTHON) -m pytest e2e/config -v
+	$(PYTHON) -m pytest e2e/config e2e/session e2e/eventbus -v
 
 check: test e2e

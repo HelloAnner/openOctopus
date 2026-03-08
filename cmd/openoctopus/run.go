@@ -3,8 +3,10 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
 
 	"github.com/anner/openoctopus/internal/config/service"
+	"github.com/anner/openoctopus/internal/eventbus"
 	"github.com/anner/openoctopus/internal/session"
 	"github.com/spf13/cobra"
 )
@@ -18,7 +20,7 @@ func newRunCommand() *cobra.Command {
 		Short: "执行 OpenOctopus 工作流",
 		RunE: func(command *cobra.Command, _ []string) error {
 			result, err := service.LoadForValidate(service.LoadOptions{
-				ConfigPath: configPath,
+				ConfigPath:    configPath,
 				FlagOverrides: buildFlagOverrides(workspaceRoot, maxParallelRoles),
 			})
 			if err != nil {
@@ -30,11 +32,26 @@ func newRunCommand() *cobra.Command {
 				}
 				return errors.New("config validation failed")
 			}
-			sessionDir, err := session.CreateSkeleton(result.Config, configPath)
+			createResult, err := session.Create(session.CreateOptions{
+				Config:          result.Config,
+				ConfigPath:      configPath,
+				AppliedDefaults: result.AppliedDefaults,
+			})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(command.OutOrStdout(), "session created: %s\n", sessionDir)
+			store := eventbus.NewStore(createResult.SessionDir)
+			err = store.Bootstrap(eventbus.BootstrapOptions{
+				SessionID:   createResult.SessionID,
+				SessionDir:  createResult.SessionDir,
+				WorkflowID:  result.Config.Meta.WorkflowID,
+				MetadataRef: "metadata.md",
+			})
+			if err != nil {
+				_ = os.RemoveAll(createResult.SessionDir)
+				return err
+			}
+			fmt.Fprintf(command.OutOrStdout(), "session created: %s\n", createResult.SessionDir)
 			return nil
 		},
 	}

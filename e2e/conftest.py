@@ -50,20 +50,58 @@ def binary_path(project_root: Path, workspace_dir: Path) -> Path:
 
 
 @pytest.fixture()
-def prepare_case(workspace_dir: Path, request):
-    fixtures_root = Path(__file__).resolve().parent / "config" / "fixtures"
+def prepare_module_case(workspace_dir: Path):
+    fixtures_root = Path(__file__).resolve().parent
 
-    def _prepare(case_name: str) -> Path:
-        source = fixtures_root / case_name
-        target = workspace_dir / case_name
+    def _prepare(module_name: str, case_name: str) -> Path:
+        source = fixtures_root / module_name / "fixtures" / case_name
+        target = workspace_dir / module_name / case_name
         if target.exists():
             shutil.rmtree(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copytree(source, target)
         return target
 
     return _prepare
 
 
+@pytest.fixture()
+def prepare_case(prepare_module_case):
+    def _prepare(case_name: str) -> Path:
+        return prepare_module_case("config", case_name)
+
+    return _prepare
+
+
+
+
+@pytest.fixture(scope="session")
+def eventbus_harness_path(project_root: Path, workspace_dir: Path) -> Path:
+    binary = workspace_dir / "bin" / "eventbus-harness"
+    binary.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run(
+        ["go", "build", "-o", str(binary), "./e2e/eventbus/harness"],
+        cwd=project_root,
+        check=True,
+    )
+    return binary
+
+
+@pytest.fixture()
+def run_harness(eventbus_harness_path: Path):
+    def _run(args, cwd: Path, env: Optional[dict] = None):
+        runtime_env = os.environ.copy()
+        if env:
+            runtime_env.update(env)
+        return subprocess.run(
+            [str(eventbus_harness_path), *args],
+            cwd=cwd,
+            env=runtime_env,
+            capture_output=True,
+            text=True,
+        )
+
+    return _run
 @pytest.fixture()
 def run_cli(binary_path: Path, real_codex_env: Path):
     def _run(args, cwd: Path, env: Optional[dict] = None):
