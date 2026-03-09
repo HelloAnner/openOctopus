@@ -1,3 +1,0 @@
-# Deterministic Artifact
-
-hello artifact
